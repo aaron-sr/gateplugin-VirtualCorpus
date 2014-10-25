@@ -1,18 +1,3 @@
-/*
- *  DirectoryCorpusPersistence.java
- *
- *
- * Copyright (c) 2010, Austrian Research Institute for
- * Artificial Intelligence (OFAI)
- *
- * This file is free
- * software, licenced under the GNU General Public License, Version 2
- *
- *  Johann Petrak, 30/8/2010
- *
- *  $Id: DirectoryCorpusPersistence.java 12 2011-02-06 00:03:07Z johann.petrak $
- */
-
 package at.ofai.gate.virtualcorpus;
 
 import gate.creole.ResourceInstantiationException;
@@ -47,16 +32,6 @@ public class DirectoryCorpusPersistence extends LRPersistence {
     }
 
     DirectoryCorpus corpus = (DirectoryCorpus)source;
-    // Fake that this LR does not have a DS, that will save it without
-    // DS persistence information which will make it possible to restore it
-    // without a DS and create the dummy DS ourselves at init time.
-    if(!corpus.isTransientCorpus) {
-      corpus.hideDataStore();
-    }
-    super.extractDataFromSource(source);
-    if(!corpus.isTransientCorpus) {
-      corpus.unHideDataStore();
-    }
   }
 
 

@@ -20,6 +20,7 @@ import gate.Corpus;
 import gate.Document;
 import gate.creole.*;
 import gate.creole.metadata.CreoleParameter;
+import gate.creole.metadata.HiddenCreoleParameter;
 import gate.creole.metadata.Optional;
 import java.io.FileFilter;
 import java.net.URL;
@@ -37,93 +38,46 @@ public abstract class VirtualCorpus
 {
 
   /**
-   * Setter for the <code>removeDocuments</code> LR initialization parameter.
+   * Setter for the <code>immutable</code> LR initialization parameter.
    *
-   * @param removeDocuments If set to false, do not remove the stored version
-   * of the document if the document is deleted from the corpus inside GATE.
+   * @param immutable If set to true, the corpus list cannot be changed, i.e.
+   * documents cannot be removed or deleted. All methods which would otherwise
+   * change the corpus content are silently ignored.
+   * 
+   * NOTE: For now this is hidden and all instances of virtual corpora are
+   * immutable!
    *
    */
   @Optional
-  @CreoleParameter(comment="if false, do not delete original if document is removed from the corpus",
+  @HiddenCreoleParameter
+  @CreoleParameter(comment="if true, the corpus content cannot be changed, documents cannot be added or removed",
     defaultValue="true")
-  public void setRemoveDocuments(Boolean removeDocuments) {
-    this.removeDocuments = removeDocuments;
+  public void setImmutable(Boolean immutable) {
+    this.immutable = immutable;
   }
-  /**
-   * Getter for the <code>saveDocuments</code> LR initialization parameter.
-   *
-   * @return true if documents are saved to the filesystem on unload, false
-   * otherwise.
-   */
   public Boolean getRemoveDocuments() {
-    return this.removeDocuments;
+    return this.immutable;
   }
-  protected Boolean removeDocuments = true;
+  protected Boolean immutable = true;
 
   /**
-   * Setter for the <code>saveDocuments</code> LR initialization parameter.
+   * Setter for the <code>readonly</code> LR initialization parameter.
    *
-   * @param saveDocuments If set to false, nothing will be writte to the file
-   * system. If set to true (the default), then modified documents are written
-   * to either the directoryURL or, if specified, the outDirectoryURL directory.
-   *
+   * @param readonly If set to true, documents will never be saved back. All
+   * methods which would otherwise cause a document to get saved are silently
+   * ignored.
    */
   @Optional
-  @CreoleParameter(comment="If false, nothing is ever saved",
-    defaultValue="true")
-  public void setSaveDocuments(Boolean saveDocuments) {
-    this.saveDocuments = saveDocuments;
-  }
-  /**
-   * Getter for the <code>saveDocuments</code> LR initialization parameter.
-   *
-   * @return true if documents are saved to the filesystem on unload, false
-   * otherwise.
-   */
-  public Boolean getSaveDocuments() {
-    return this.saveDocuments;
-  }
-  protected Boolean saveDocuments = true;
-
-  /**
-   * @param setTransient
-   */
-  @CreoleParameter(comment = "If the corpus created should be transient or use a dummy datastore",
-    defaultValue="true")
-  public void setTransientCorpus(Boolean setTransient) {
-    isTransientCorpus = setTransient;
-  }
-  /**
-   * @return
-   */
-  public Boolean getTransientCorpus() {
-    return isTransientCorpus;
-  }
-
-  protected Boolean isTransientCorpus = true;
-
-  @Optional
-  @CreoleParameter(comment = "Documents are expected to be compressed and stored in compressed form",
+  @CreoleParameter(comment="If true, documents will never be saved",
     defaultValue="false")
-  public void setUseCompression(Boolean flag) {
-    useCompression = flag;
+  public void setReadonly(Boolean readonly) {
+    this.readonly = readonly;
   }
-  public Boolean getUseCompression() {
-    return useCompression;
+  public Boolean getReadonly() {
+    return this.readonly;
   }
-  protected Boolean useCompression = false;
-  
-  @Optional
-  @CreoleParameter(comment = "Documents are compressed if saved to a different target",
-    defaultValue="false")
-  public void setCompressOnCopy(Boolean flag) {
-    compressOnCopy = flag;
-  }
-  public Boolean getCompressOnCopy() {
-    return compressOnCopy;
-  }
-  protected Boolean compressOnCopy = false;
-  
+  protected Boolean readonly = true;
+
   
   public void populate( // OK
       URL directory, FileFilter filter,
@@ -167,20 +121,9 @@ public abstract class VirtualCorpus
             this.getName()+" of class "+this.getClass();
   }
 
-  boolean dataStoreIsHidden = false;
-
   /**
-   * 
+   * For mapping document names to document indices.
    */
-  public void hideDataStore() {
-    dataStoreIsHidden = true;
-  }
-  /**
-   * 
-   */
-  public void unHideDataStore() {
-    dataStoreIsHidden = false;
-  }
   Map<String,Integer> documentIndexes = new HashMap<String,Integer>();
 
   public abstract boolean isDocumentLoaded(int index);

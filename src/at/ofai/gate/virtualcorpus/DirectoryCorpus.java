@@ -47,10 +47,16 @@ import gate.util.persistence.PersistenceManager;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.logging.Level;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Logger;
 
 // TODO: use DocumentFormat.getSupportedFileSuffixes() to get the list of 
 // supported input file extensions, unless the user limits those through 
@@ -126,7 +132,7 @@ import org.apache.commons.io.IOUtils;
     interfaceName = "gate.Corpus", 
     icon = "corpus", 
     helpURL = "http://code.google.com/p/gateplugin-virtualcorpus/wiki/DirectoryCorpusUsage",
-    comment = "A corpus backed by GATE documents in a file directory")
+    comment = "A corpus backed by GATE documents in a directory or directory tree")
 public class DirectoryCorpus  
   extends VirtualCorpus
   implements CreoleListener
@@ -152,18 +158,12 @@ public class DirectoryCorpus
   
   protected File backingDirectoryFile;
   
-  protected File outDirectoryFile;
-  
   protected List<CorpusListener> listeners = new ArrayList<CorpusListener>();
   
   protected class OurFilenameFilter implements FilenameFilter {
     @Override
     public boolean accept(File directory, String filename) {
-      if(outDirectoryURL != null) {
-        return isValidDocumentName(filename,false,getUseCompression());
-      } else {
-        return isValidDocumentName(filename,true,getUseCompression());
-      }
+      return isValidDocumentName(filename);
     }
   }
   
@@ -178,6 +178,7 @@ public class DirectoryCorpus
   Pattern docNamePatternFinf =
     Pattern.compile("^[^.][^/\\*\\?\"<>|:]+\\.[Ff][Ii][Nn][Ff$");
   
+  Pattern filePattern;
   
   //***************
   // Parameters
@@ -208,68 +209,39 @@ public class DirectoryCorpus
   protected URL directoryURL = null;
 
   /**
-   * Setter for the <code>outDirectoryURL</code> LR initialization parameter.
-   *
-   * @param dirURL The URL of a directory where modfied documents are stored.
-   * If this is empty then the directoryURL will be used for both reading
-   * and storing files. If this is provided, the files from the directoryURL
-   * will not be overwritten and can have file extensions other than ".xml"
-   * of no file extension at all. The files writting in this directory will
-   * always have their file extension set to ".xml" either by replacing an
-   * existing extension or appending it.
-   * <p/>
-   * NOTE: Any existing files in this directory can be overwritten. Also, if
-   * the directoryURL contains several files which only differ in their
-   * file extension, they will all be written to the same file with extension
-   * ".xml".
-   * <p/>
-   * NOTE: this LR does not allow multi-threaded use! It does NOT allow being
-   * used for getting or saving documents and getting serialized (saved as
-   * part of a .gapp file) at the same time!
+   * File extensions to use for loading document.
+   * If this is not empty, then only files with that extension will be visible
+   * in the corpus. If it is left empty, the file extensions supported by
+   * the currently loaded document formats will be visible. 
+   * Note that in both cases, any extension which does not have a document
+   * exporter which supports that extension is ignored. 
+   * The PR will check for each extension at init time, for which of those
+   * there is a registered document exporter for saving and will only use
+   * that exporter for any saving. 
+   * 
+   * @param extensions 
    */
   @Optional
-  @CreoleParameter(
-    comment = "The directory URL where files will be written to. "+
-              "If missing same as directoryURL")
-  public void setOutDirectoryURL(URL dirURL) {
-    this.outDirectoryURL = dirURL;
+  @CreoleParameter(comment = "A list of file extensions which will be loaded into the corpus. If not specified, all supported file extensions. ")
+  public void setExtensions(List<String> extensions) {
+    this.extensions = extensions;
   }
-  /**
-   * Getter for the <code>outDirectoryURL</code> LR initialization parameter.
-   *
-   * @return the URL where documents are saved as GATE XML files when unloaded.
-   */
-  public URL getOutDirectoryURL() {
-    return this.outDirectoryURL;
-  }
-  protected URL outDirectoryURL;
+  public List<String> getExtensions() { return extensions; }
+  protected List<String> extensions;
 
   @Optional
-  @CreoleParameter(
-    comment = "The MIME type to use; if left blank some MIME type is guessed",
-    defaultValue = "")
-  public void setMimeType(String value) {
-    mimeType = value;
+  @CreoleParameter(comment = "Recursively get files from the directory (default: false)",defaultValue="false")
+  public void setRecurseDirectory(Boolean value) {
+    this.recurseDirectory = value;
   }
-  public String getMimeType() {
-    return mimeType;
-  }
-  protected String mimeType = "";
-  
-  @Optional
-  @CreoleParameter(
-    comment = "The encoding to use; if left blank the default encoding used by GATE is used",
-    defaultValue = "")
-  public void setEncoding(String value) {
-    encoding = value;
-  }
-  public String getEncoding() {
-    return encoding;
-  }
-  protected String encoding = "";
+  public Boolean getRecurseDirectory() { return recurseDirectory; }
+  protected Boolean recurseDirectory;
   
   DummyDataStore4DirCorp ourDS = null;
-
+  
+  Map<String,DocumentExporter> extension2Exporter = new HashMap<String,DocumentExporter>();
+  public static final Logger logger = Logger.getLogger(DirectoryCorpus.class);
+  
   /**
    * Initializes the DirectoryCorpus LR
    * @return 
@@ -281,11 +253,66 @@ public class DirectoryCorpus
     if(directoryURL == null) {
       throw new ResourceInstantiationException("directoryURL must be set");
     }
-    if(outDirectoryURL == null) {
-      outDirectoryFile = Files.fileFromURL(directoryURL);
-    } else {
-      outDirectoryFile = Files.fileFromURL(outDirectoryURL);
+    // first of all, create a map that contains all the supported extensions
+    // as keys and the corresponding documente exporter as value. 
+    
+    // First, get all the supported extensions for reading files
+    Set<String> readExtensions = DocumentFormat.getSupportedFileSuffixes();
+    Set<String> supportedExtensions = new HashSet<String>();
+    
+    // if we also want to write, we have to limit the supported extensions
+    // to those where we have an exporter and also we need to remember which
+    // exporter supports which extensions
+    if(!getReadonly()) {
+    List<Resource> des = null;
+    try {
+      // Now get all the Document exporters
+      des = Gate.getCreoleRegister().
+              getAllInstances("gate.DocumentExporter");
+    } catch (GateException ex) {
+      throw new ResourceInstantiationException("Could not get the document exporters",ex);
     }
+    for(Resource r : des) {
+      DocumentExporter d = (DocumentExporter)r;
+      if(readExtensions.contains(d.getDefaultExtension())) {
+        extension2Exporter.put(d.getDefaultExtension(), d);
+        supportedExtensions.add(d.getDefaultExtension());
+      }
+    }
+    } else {
+      supportedExtensions.addAll(readExtensions);
+    }
+
+    // now check if an extension list was specified by the user. If no, nothing
+    // needs to be done. If yes, remove all the extensions from the extnesion2Exporter
+    // map which were not specified and warn about all the extensions specified
+    // for which we do not have an entry. Also remove them from the supportedExtensions set
+    if(getExtensions() != null && !getExtensions().isEmpty()) {
+      for(String ext : getExtensions()) {
+        if(!supportedExtensions.contains(ext)) {
+          logger.warn("DirectoryCorpus warning: extension is not supported: "+ext);
+        }
+      }
+      // now remove all the extensions which are not specified
+      Iterator<String> it = supportedExtensions.iterator();
+      while(it.hasNext()) {
+        String ext = it.next();
+        if(!getExtensions().contains(ext)) {
+          it.remove();
+          extension2Exporter.remove(ext);
+        }
+      }
+    }
+    
+    if(supportedExtensions.isEmpty()) {
+      throw new ResourceInstantiationException("DirectoryCorpus could not be created, no file format supported or loaded");
+    }
+    
+    // create the pattern which can be used to check if a file path 
+    // matches the extensions we support.
+    String filePatternString = "[^.]+\\.(?:"+StringUtils.join(supportedExtensions,'|')+")";
+    filePattern = Pattern.compile(filePatternString);
+    
     backingDirectoryFile = Files.fileFromURL(directoryURL);
     try {
       backingDirectoryFile = backingDirectoryFile.getCanonicalFile();
@@ -293,30 +320,39 @@ public class DirectoryCorpus
       throw new ResourceInstantiationException(
               "Cannot get canonical file for "+backingDirectoryFile,ex);
     }
-    try {
-      outDirectoryFile = outDirectoryFile.getCanonicalFile();
-    } catch (IOException ex) {
-      throw new ResourceInstantiationException(
-              "Cannot get canonical file for "+outDirectoryFile,ex);
-    }
     if(!backingDirectoryFile.isDirectory()) {
       throw new ResourceInstantiationException(
               "Not a directory "+backingDirectoryFile);
     }
-    if(!outDirectoryFile.isDirectory()) {
-      throw new ResourceInstantiationException(
-              "Not a directory "+outDirectoryFile);
-    }
-    File[] files = backingDirectoryFile.listFiles(new OurFilenameFilter());
+    Iterator<File> fileIt = 
+            FileUtils.iterateFiles(backingDirectoryFile, 
+            supportedExtensions.toArray(new String[0]), getRecurseDirectory());
     int i = 0;
-    if(files != null) {
-      for(File file : files) {
-        String filename = file.getName();
+    while(fileIt.hasNext()) {
+      File file = fileIt.next();
+      // if recursion was specified, we need to get the relative file path
+      // relative to the root directory. This is done by getting the canonical
+      // full path name for both the directory and the file and then 
+      // relativizing the path.
+      String filename = file.getName();
+      // TODO: first check if this file should be ignored (hidden files?)
+      if(!filename.startsWith(".")) {
+        if(getRecurseDirectory()) {
+          try {
+            file = file.getCanonicalFile();
+          } catch (IOException ex) {
+            throw new ResourceInstantiationException("Could not get canonical path for "+file);
+          }
+          filename = backingDirectoryFile.toURI().relativize(file.toURI()).getPath();
+        }
         documentNames.add(filename);
         isLoadeds.add(false);
         documentIndexes.put(filename, i);
         i++;
       }
+    }
+    if(i==0) {
+      logger.warn("DirectoryCorpus warning: empty immutable corpus created, no files found");
     }
     try {
       PersistenceManager.registerPersistentEquivalent(
@@ -326,18 +362,16 @@ public class DirectoryCorpus
       throw new ResourceInstantiationException(
               "Could not register persistence",e);
     }
-    if (!isTransientCorpus) {
-      try {
+    try {
         ourDS =
           (DummyDataStore4DirCorp) Factory.createDataStore("at.ofai.gate.virtualcorpus.DummyDataStore4DirCorp", backingDirectoryFile.getAbsoluteFile().toURI().toURL().toString());
         ourDS.setName("DummyDS4_" + this.getName());
         ourDS.setComment("Dummy DataStore for DirectoryCorpus " + this.getName());
         ourDS.setCorpus(this);
         //System.err.println("Created dummy corpus: "+ourDS+" with name "+ourDS.getName());
-      } catch (Exception ex) {
+    } catch (Exception ex) {
         throw new ResourceInstantiationException(
           "Could not create dummy data store", ex);
-      }
     }
     Gate.getCreoleRegister().addCreoleListener(this);
     return this;
@@ -371,27 +405,37 @@ public class DirectoryCorpus
   }
 
   /**
-   * Unload a document from the corpus. When a document is unloaded it
-   * is automatically stored in GATE XML format to the directory where it
-   * was read from or to the directory specified for the outDirectoryURL
-   * parameter. If saveDocuments is false, nothing is saved at all.
-   * If the document is not part of the corpus, a GateRuntimeException is
-   * thrown.
+   * Unload a document from the corpus. 
+   * This mimics what SerialCorpusImpl does: the document gets synced which
+   * in turn will save the document, then it gets removed from memory.
+   * Syncing will make our dummy datastore to invoke our own saveDocument
+   * method. The saveDocument method determines if the document should really
+   * be saved and how.
    *
    * @param doc
    */
+  @Override
   public void unloadDocument(Document doc) {
+    unloadDocument(doc,true);
+  }
+  
+  // NOTE: unfortunately this method, like the unloadDocument(int) methods
+  // is not in the Corpus interface. 
+  public void unloadDocument(Document doc, boolean sync) {
     String docName = doc.getName();
-    //System.out.println("DirCorp: called unloadDocument: "+docName);
+    System.out.println("DirCorp: called unloadDocument: "+docName);
     Integer index = documentIndexes.get(docName);
     if(index == null) {
       throw new RuntimeException("Document "+docName+
               " is not contained in corpus "+this.getName());
     }
     if(isDocumentLoaded(index)) {
-      // if saveOnUnload is set, save the document
-      if(saveDocuments) {
-        saveDocument(doc);
+      if(sync) { 
+        try { 
+          doc.sync();
+        } catch (Exception ex) {
+          throw new GateRuntimeException("Problem syncing document "+doc.getName(),ex);
+        }
       }
       loadedDocuments.remove(docName);
       isLoadeds.set(index, false);
@@ -400,16 +444,19 @@ public class DirectoryCorpus
   }
   
   
+  @Override
   public void removeCorpusListener(CorpusListener listener) {
     listeners.remove(listener);
   }
+  @Override
   public void addCorpusListener(CorpusListener listener) {
     listeners.add(listener);
   }
 
   /**
    * Get the list of document names in this corpus.
-   *
+   * This returns a list of the document names contained in the corpus.
+   * Modifying this list will have no effect on the corpus.
    * @return the list of document names 
    */
   public List<String> getDocumentNames() {
@@ -423,6 +470,7 @@ public class DirectoryCorpus
    * @param i the index of the document to return
    * @return the name of the document with the given index
    */
+  @Override
   public String getDocumentName(int i) {
     return documentNames.get(i);
   }
@@ -430,12 +478,9 @@ public class DirectoryCorpus
   /**
    * @return
    */
+  @Override
   public DataStore getDataStore() {
-    if(dataStoreIsHidden) {
-      return null;
-    } else {
       return ourDS;
-    }
   }
 
   /**
@@ -452,8 +497,16 @@ public class DirectoryCorpus
   }
 
   /**
-   * This follows the convention for transient corpus objects and always
-   * returns false.
+   * This returns false because the corpus itself cannot be in a modified,
+   * unsaved state.
+   * 
+   * For now all DirectoryCorpus objects are immutable: the list of documents
+   * cannot be changed. Therefore, there is no way to modfy the corpus LR.
+   * However, even if documents can be added or removed at some point, 
+   * these changes will be immediately reflected in the backing directory,
+   * so there is no way to modify the corpus and not have these changes 
+   * "saved" or "synced". 
+   * The bottom line is that this will always return false.
    * 
    * @return always false
    */
@@ -462,9 +515,17 @@ public class DirectoryCorpus
     return false;
   }
 
+  /**
+   * Syncing the corpus does nothing.
+   * For an immutable corpus, there is nothing that would ever need to 
+   * get synced (saved) and for a mutable corpus, all changes are saved
+   * immediately so "syncing" is never necessary.
+   * NOTE: syncing the corpus itself does not affect and should not affect
+   * any documents which still may be modified and not synced.
+   */
   @Override
   public void sync() {
-    // TODO: save the document!?!?
+    // do nothing.
   }
 
 
@@ -473,18 +534,14 @@ public class DirectoryCorpus
     // TODO:
     // deregister our listener for resources of type document
     //
-    if(!isTransientCorpus) {
-      Gate.getDataStoreRegister().remove(ourDS);
-    }
+    Gate.getDataStoreRegister().remove(ourDS);
   }
 
   @Override
   public void setName(String name) {
     super.setName(name);
-    if(ourDS != null) {
-      ourDS.setName("DummyDS4_"+this.getName());
-      ourDS.setComment("Dummy DataStore for DirectoryCorpus "+this.getName());
-    }
+    ourDS.setName("DummyDS4_"+this.getName());
+    ourDS.setComment("Dummy DataStore for DirectoryCorpus "+this.getName());
   }
 
 
@@ -497,7 +554,13 @@ public class DirectoryCorpus
    * If the name of the document added is not ending in ".xml", a 
    * GateRuntimeException is thrown.
    * If the document is already adopted by some data store throw an exception.
+   * IMPORTANT: this is NOT IMPLEMENTED at the moment!
    */
+  @Override
+  public boolean add(Document doc) {
+    throw new MethodNotImplementedException(notImplementedMessage("add(Document doc)"));
+  }
+  /*
   public boolean add(Document doc) {
     if(!saveDocuments) {
       return false;
@@ -528,6 +591,7 @@ public class DirectoryCorpus
       return true;
     }
   }
+  */
 
 
   /**
@@ -535,7 +599,13 @@ public class DirectoryCorpus
    * when the saveDocuments parameter is set to false.
    * If the outDirectoryURL parameter was set, this method will throw
    * a GateRuntimeException.
+   * IMPORTANT: this is not implemented at the moment!!
    */
+  @Override
+  public void clear() {
+    throw new MethodNotImplementedException(notImplementedMessage("clear()"));
+  }
+  /*
   public void clear() {
     if(!saveDocuments) {
       return;
@@ -549,12 +619,15 @@ public class DirectoryCorpus
       remove(i);
     }
   }
+  */
   
   /**
    * This checks if a document with the same name as the document
-   * passed is already in the corpus. The content is not considered 
-   * for this.
+   * passed is already in the corpus. 
+   * IMPORTANT: The content is not considered 
+   * for this, only the name is relevant!
    */
+  @Override
   public boolean contains(Object docObj) {
     Document doc = (Document)docObj;
     String docName = doc.getName();
@@ -572,6 +645,7 @@ public class DirectoryCorpus
    * @param index
    * @return 
    */
+  @Override
   public Document get(int index) {
     //System.out.println("DirCorp: called get(index): "+index);
     if(index < 0 || index >= documentNames.size()) {
@@ -586,12 +660,10 @@ public class DirectoryCorpus
       return doc;
     }
     //System.out.println("Document not loaded, reading");
-    Document doc = readDocument(docName,getUseCompression());
+    Document doc = readDocument(docName);
     loadedDocuments.put(docName, doc);
     isLoadeds.set(index, true);
-    if(!isTransientCorpus) {
-      adoptDocument(doc);
-    }
+    adoptDocument(doc);
     return doc;
   }
 
@@ -602,6 +674,7 @@ public class DirectoryCorpus
    * @param docObj
    * @return
    */
+  @Override
   public int indexOf(Object docObj) {
     Document doc = (Document)docObj;
     String docName = doc.getName();
@@ -618,6 +691,7 @@ public class DirectoryCorpus
    *
    * @return true if the corpus is empty
    */
+  @Override
   public boolean isEmpty() {
     return (documentNames.isEmpty());
   }
@@ -628,6 +702,7 @@ public class DirectoryCorpus
    * 
    * @return
    */
+  @Override
   public Iterator<Document> iterator() {
     return new DirectoryCorpusIterator();
   }
@@ -639,6 +714,7 @@ public class DirectoryCorpus
    * @param docObj
    * @return
    */
+  @Override
   public int lastIndexOf(Object docObj) {
     throw new MethodNotImplementedException(
             notImplementedMessage("lastIndexOf(Object)"));
@@ -650,6 +726,7 @@ public class DirectoryCorpus
    *
    * @return
    */
+  @Override
   public ListIterator<Document> listIterator() {
     throw new MethodNotImplementedException(
             notImplementedMessage("listIterator"));
@@ -663,6 +740,7 @@ public class DirectoryCorpus
    * @param i
    * @return
    */
+  @Override
   public ListIterator<Document> listIterator(int i) {
     throw new MethodNotImplementedException(
             notImplementedMessage("listIterator(int)"));
@@ -676,9 +754,16 @@ public class DirectoryCorpus
    * A document which is removed from the corpus will have its dummy
    * datastore removed and look like a transient document again. 
    * 
+   * IMPORTANT: this is NOT IMPLEMENTED yet!
+   * 
    * @param index
    * @return the document that was just removed from the corpus
    */
+  @Override
+  public Document remove(int index) {
+    throw new MethodNotImplementedException(notImplementedMessage("remove(int index)"));
+  }
+  /*
   public Document remove(int index) {
     Document doc = (Document)get(index);
     String docName = documentNames.get(index);
@@ -701,6 +786,7 @@ public class DirectoryCorpus
         index, CorpusEvent.DOCUMENT_REMOVED));
     return doc;
   }
+  */
 
   /**
    * Removes a document with the same name as the given document
@@ -714,6 +800,11 @@ public class DirectoryCorpus
    * @param docObj
    * @return true if a document was removed from the corpus
    */
+  @Override
+  public boolean remove(Object docObj) {
+    throw new MethodNotImplementedException(notImplementedMessage("remove(Object docObj)"));
+  }
+  /*
   public boolean remove(Object docObj) {
     int index = indexOf(docObj);
     if(index == -1) {
@@ -737,6 +828,7 @@ public class DirectoryCorpus
         index, CorpusEvent.DOCUMENT_REMOVED));
     return true;
   }
+  */
 
   /**
    * Remove all the documents in the collection from the corpus.
@@ -744,6 +836,11 @@ public class DirectoryCorpus
    * @param coll
    * @return true if any document was removed
    */
+  @Override
+  public boolean removeAll(Collection coll) {
+    throw new MethodNotImplementedException(notImplementedMessage("removeAll(Collection coll)"));
+  }
+  /*
   public boolean removeAll(Collection coll) {
     boolean ret = false;
     for(Object docObj : coll) {
@@ -751,6 +848,7 @@ public class DirectoryCorpus
     }
     return ret;
   }
+  */
 
   
   /**
@@ -761,11 +859,13 @@ public class DirectoryCorpus
    * @param obj
    * @return
    */
+  @Override
   public Document set(int index, Document obj) {
     throw new gate.util.MethodNotImplementedException(
             notImplementedMessage("set(int,Object)"));
   }
   
+  @Override
   public int size() {
     return documentNames.size();
   }
@@ -778,6 +878,7 @@ public class DirectoryCorpus
    * @param i2
    * @return
    */
+  @Override
   public List<Document> subList(int i1, int i2) {
     throw new gate.util.MethodNotImplementedException(
             notImplementedMessage("subList(int,int)"));
@@ -800,9 +901,11 @@ public class DirectoryCorpus
     }
   }
 
+  @Override
   public void resourceLoaded(CreoleEvent e) {
   }
 
+  @Override
   public void resourceRenamed(
           Resource resource,
           String oldName,
@@ -818,6 +921,7 @@ public class DirectoryCorpus
     }
   }
 
+  @Override
   public void resourceUnloaded(CreoleEvent e) {
     Resource res = e.getResource();
     if(res instanceof Document) {
@@ -827,17 +931,24 @@ public class DirectoryCorpus
         unloadDocument(doc);
       } // else: its not ours, ignore
     } else if(res == this) {
+      // if this corpus object gets unloaded, what should we do with any 
+      // of the documents which are currently loaded?
+      // TODO!!!!
+      // Also should we not do the cleanup in the cleanup code?
       Gate.getCreoleRegister().removeCreoleListener(this);
     }
   }
 
+  @Override
   public void datastoreClosed(CreoleEvent ev) {
   }
   
+  @Override
   public void datastoreCreated(CreoleEvent ev) {
     
   }
   
+  @Override
   public void datastoreOpened(CreoleEvent ev) {
     
   }
@@ -845,88 +956,29 @@ public class DirectoryCorpus
   //**************************
   // helper methods
   // ************************
+  
+  // This method should only get called by the datastore when a document
+  // is synced. This will happen automatically when a document is unloaded
+  // or when a document is deliberately synced via its datastore. 
   protected void saveDocument(Document doc) {
     //System.out.println("DirCorp: save doc "+doc.getName());
-    // at this point the document should be checked to be a valid file name
-    // If the document name does not end in ".xml" we either replace any
-    // existing extension with ".xml" or append ".xml"
-    if(!getSaveDocuments()) {
+    // If the corpus is read-only, nothing gets saved
+    if(getReadonly()) {
       return;
     }
-    boolean compressOnCopy = getCompressOnCopy();
-    boolean useCompression = getUseCompression();
     String docName = doc.getName();
-    // Avoid adding additional .xml and/orf .gz endings if we already have
-    // them: this is done by always removing any .xml or .gz that might
-    // be there and then re-adding them as needed.
-    docName = docName.replaceAll("\\.gz$", "");
-    docName = docName.replaceAll("\\.xml$", "");
-    docName += ".xml";
-    if(compressOnCopy || useCompression) {
-      docName += ".gz";
+    // get the extension and then look up the document exporter for that
+    // extension which will be used to do the actual saving.
+    int extDotPos = docName.lastIndexOf(".");
+    if(extDotPos <= 0) {
+      throw new GateRuntimeException("Did not find a file name extensions when trying to save document "+docName);
     }
-    File docFile = new File(outDirectoryFile, docName);
-    String xml = doc.toXml();
-    if(compressOnCopy || useCompression) {
-      String outputEncoding = "UTF-8";
-      String sysEncoding = System.getProperty("file.encoding");
-      if(encoding != null && !encoding.isEmpty()) {
-        outputEncoding = encoding;
-        //System.out.println("Encoding set to encoding parm: "+encoding);
-      } else if(sysEncoding != null && !sysEncoding.isEmpty() ) {
-        outputEncoding = sysEncoding;
-        //System.out.println("Encoding set to system encoding: "+sysEncoding);
-      }
-      byte[] buf = null;
-      try {
-        buf = xml.getBytes(outputEncoding);
-      } catch (UnsupportedEncodingException ex) {
-        throw new GateRuntimeException("Could not convert to encoding: "+outputEncoding+", file "+docFile,ex);
-      }
-      OutputStream os;
-      OutputStream ourOut;
-      try {
-        os = new FileOutputStream(docFile);
-      } catch (FileNotFoundException ex) {
-        throw new GateRuntimeException("File not found on writing but listed in corpus: "+docFile,ex);
-      }
-      try {
-        ourOut = new GZIPOutputStream(os);
-      } catch (IOException ex) {
-        IOUtils.closeQuietly(os);
-        throw new GateRuntimeException("IO exception when creating compressed strem for file "+docFile,ex);
-      }
-      try {
-        ourOut.write(buf);
-      } catch (IOException ex) {
-        IOUtils.closeQuietly(ourOut);
-        IOUtils.closeQuietly(os);
-        throw new GateRuntimeException("IO exception when writing compressed stream for file "+docFile,ex);
-      }
-      try {
-        ourOut.close();
-      } catch (IOException ex) {
-        IOUtils.closeQuietly(os);
-        throw new GateRuntimeException("IO exception when closing compressed stream for file "+docFile,ex);
-      }
-      try {
-        os.close();
-      } catch (IOException ex) {
-        throw new GateRuntimeException("IO exception when closing output stream for file "+docFile,ex);
-      }
-    } else {
-      try {
-        OutputStreamWriter writer =
-          new OutputStreamWriter(new FileOutputStream(docFile));
-        writer.write(xml);
-        writer.flush();
-        writer.close();
-        //System.err.println("Document saved: "+docName);
-      } catch (Exception ex) {
-        throw new GateRuntimeException(
-          "Could not write document " + doc.getName(), ex);
-      }
+    String ext = docName.substring(extDotPos);
+    if(ext.isEmpty()) {
+      throw new GateRuntimeException("Encountered empty extension when trying to save document "+docName);
     }
+    DocumentExporter de = extension2Exporter.get(ext);
+    de.export(doc, outfile);
   }
   
   protected Document readDocument(String docName, boolean compression) {
@@ -1026,7 +1078,7 @@ public class DirectoryCorpus
     } 
   }
   
-  protected boolean isValidDocumentName(String docName, boolean onlyXML, boolean compress) {
+  protected boolean isValidDocumentName(String docName) {
     // this corpus only allows document names that are also valid file names
     // Names must not start with a dot.
     // If onlyXML is set, all names must end with ".xml"
