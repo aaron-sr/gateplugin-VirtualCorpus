@@ -31,20 +31,19 @@ import gate.util.*;
 
 /** 
  * A corpus that contains a subset of the documents of an existing
- * VirtualCorpus (its "parent corpus"). Only documents that are in the
+ * VirtualCorpus (its "parent corpus"). 
+ * 
+ * Only documents that are in the
  * parent corpus can be added, and removing a document from the SubsetCorpus
- * will not delete any files in the JDBC table. This corpus is essentially
+ * will not remove any documents from the parent corpus, nor will it remove the
+ * original file or database table row which backs the document. 
+ * A Subset Corpus is essentially
  * just a view into the parent corpus.
  * Its main purpose is to support the Learning plugin
- * with a VirtualCorpus.
+ * with a VirtualCorpus and other situations where one wants to create 
+ * corpora from documents in an existing corpus for subsetting, sampling etc.
  * <p>
- * NOTE: for now, only a non-transient VirtualCorpus can have a
- * SubsetCorpus.
- * <p>
- * NOTE: for now, events on the parent corpus are not all handled correctly,
- * e.g. if a document gets removed from the parent, this corpus might not
- * adapt to it. For now, a subset corpus should only be used while the
- * parent corpus stays unchanged!!!!!
+ * NOTE: all non-subset corpora are currently immutable!
  * <p>
  * Removing a SubsetCorpus will not remove the datastore. The normal way
  * to create a SubsetCorpus is by adopting a new and empty transient corpus

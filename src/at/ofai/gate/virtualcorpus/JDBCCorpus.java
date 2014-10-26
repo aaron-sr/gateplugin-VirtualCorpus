@@ -56,25 +56,18 @@ import org.apache.commons.io.IOUtils;
 
 /** 
  * A Corpus LR that mirrors documents stored in a JDBC database table field.
+ * 
  * The table must have a unique id field which will serve as the document
- * name. The JDBC corpus can be used in two different modes: in-place update
- * and from-to. In in-place update mode, only a single field is used for the
- * database content and the field must already contain documents in GATE xml
- * format. In from-to mode, the input field can contain documents in other
- * formats and the processing result is stored in GATE xml format to a different
- * output field in the same row. In this mode, if the input document format is
- * not GATE xml, the mime type and encoding fields should be specified.
- * The list of documents shown in this corpus can be arbitrarily created from
- * a SQL query over any table in the database which returns the IDs of documents
- * to be taken from the document table. If the SQL query field is empty, all
- * the IDs from the document table are taken (or limited to whatever is
- * specified for the limit field).
+ * name and it must have a field that contains the actual document in some
+ * format that can be both read, and if readonly is not true, also written by 
+ * GATE using the currently loaded
+ * plugins. The format used by default is gate XML, however it is possible
+ * to specify a different format by specifying a mime type when the corpus
+ * is created.
  * <p>
- * This LR does not implement the following methods:
- * <ul>
- * <li>toArray: none of the toArray methods is implemented.
- * <li>inserting new documents: TODO
- * </ul> 
+ * NOTE: this corpus is immutable, none of the methods to add or remove documents
+ * is supported!
+ * <p>
  * This corpus LR automatically uses a "dummy datastore" internally.
  * This datastore is created and removed automatically when the corpus LR is
  * created and removed. This datastore cannot be used for anything useful, it
@@ -83,38 +76,10 @@ import org.apache.commons.io.IOUtils;
  * documents are either transient or from a datastore. To avoid documents from
  * a JDBCCorpus to get treated as transient documents, their DataStore is
  * set to this dummy DataStore.
- * <p>
- * A document will always be saved to the original table field or the field
- * specified as outDocumentContentField whenever the document is synced or
- * unloaded.
- * <p>
- * NOTE: there are some situations where the JDBC corpus will throw an
- * exception:
- * <ul>
- * <li>if you use the select statement to only show a subset of
- * documents in the corpus, adding a document that has a name that is already
- * in the table, but not shown in the corpus, will result in an error.</li>
- * <li>The plugin does not check which SQL field type is used for any the fields
- * specified. It is expected that all the fields can be converted to and from
- * a Java String. For the document name, a numeric field type can be used,
- * but only if document names can be converted to a number.</li>
- * <li>If a document is added, only the id and content or outcontent fields
- * are actually filled with some value. This will onlys succeed if there is no
- * other field or no other field that does not have a default value.
- * (in other words, be sure that all other fields do have some default value
- * set when the table is created).</li>
- * <lr> this LR does not allow multi-threaded use! It does NOT allow being
- * used for getting or saving documents and getting serialized (saved as
- * part of a .gapp file) at the same time!</lr>
- * </ul>
+ * 
  * @author Johann Petrak
  */
 
-// TODO:
-// Think about if and how to implement document removal!
-// Proposal: if saving is disabled, just remove from the corpus, if saving
-// is enabled, actually remove the row from the table.
-// TODO: check how problems are handled if a document cannot be parsed.
 @CreoleResource(
     name = "JDBCCorpus",
     interfaceName = "gate.Corpus", 
@@ -342,20 +307,10 @@ public class JDBCCorpus
             setMimeTypeField(val);
         } else if(prop.equals("outDocumentContentField")) {
             setOutDocumentContentField(val);
-        } else if(prop.equals("removeDocuments")) {
-            setRemoveDocuments(Boolean.valueOf(val));
-        } else if(prop.equals("saveDocuments")) {
-            setSaveDocuments(Boolean.valueOf(val));
         } else if(prop.equals("selectSQL")) {
             setSelectSQL(val);
         } else if(prop.equals("tableName")) {
             setTableName(val);
-        } else if(prop.equals("transientCorpus")) {
-            setTransientCorpus(Boolean.valueOf(val));
-        } else if(prop.equals("useCompression")) {
-            setUseCompression(Boolean.valueOf(val));
-        } else if(prop.equals("compressOnCopy")) {
-            setCompressOnCopy(Boolean.valueOf(val));
         } else {
             System.err.println("Parameter "+prop+"="+val+" not found");
         }

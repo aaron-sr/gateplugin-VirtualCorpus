@@ -1,18 +1,3 @@
-/*
- *  VirtualCorpus.java
- *
- * Copyright (c) 2010, Austrian Research Institute for
- * Artificial Intelligence (OFAI)
- *
- * This file is free
- * software, licenced under the GNU Library General Public License,
- * Version 2, June1991.
- *
- *  Johann Petrak, 30/8/2010
- *
- *  $Id: VirtualCorpus.java 119 2014-03-04 11:56:41Z johann.petrak $
- */
-
 package at.ofai.gate.virtualcorpus;
 
 
@@ -45,7 +30,8 @@ public abstract class VirtualCorpus
    * change the corpus content are silently ignored.
    * 
    * NOTE: For now this is hidden and all instances of virtual corpora are
-   * immutable!
+   * immutable! This parameter may get removed in the future and all VirtualCorpus
+   * instances may forever remain immutable!
    *
    */
   @Optional
@@ -117,7 +103,7 @@ public abstract class VirtualCorpus
 
 
   protected String notImplementedMessage(String methodName) {
-    return "Method "+methodName+" not implemented for corpus "+
+    return "Method "+methodName+" not supported for VirtualCorpus corpus "+
             this.getName()+" of class "+this.getClass();
   }
 
@@ -126,8 +112,11 @@ public abstract class VirtualCorpus
    */
   Map<String,Integer> documentIndexes = new HashMap<String,Integer>();
 
+  @Override
   public abstract boolean isDocumentLoaded(int index);
+  @Override
   public abstract void unloadDocument(Document doc);
+  @Override
   public abstract Document get(int index);
   
   /**

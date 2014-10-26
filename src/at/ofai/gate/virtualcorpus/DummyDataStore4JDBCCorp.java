@@ -24,10 +24,6 @@ import gate.Factory;
 import gate.Resource;
 import gate.creole.ResourceInstantiationException;
 import gate.util.GateRuntimeException;
-import java.io.IOException;
-import java.sql.SQLException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 
 /**
