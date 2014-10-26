@@ -1,5 +1,6 @@
 package at.ofai.gate.virtualcorpus;
 
+import gate.DataStore;
 import gate.creole.ResourceInstantiationException;
 import gate.persist.PersistenceException;
 import gate.util.persistence.LRPersistence;
@@ -32,6 +33,9 @@ public class DirectoryCorpusPersistence extends LRPersistence {
     }
 
     DirectoryCorpus corpus = (DirectoryCorpus)source;
+    DataStore ds = corpus.getDataStore();
+    super.extractDataFromSource(source);
+    corpus.setDataStore(ds);
   }
 
 

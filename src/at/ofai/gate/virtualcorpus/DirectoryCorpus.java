@@ -15,13 +15,8 @@
 
 package at.ofai.gate.virtualcorpus;
 
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.File;
-import java.io.OutputStreamWriter;
-import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.List;
@@ -30,7 +25,6 @@ import java.util.Map;
 import java.util.ListIterator;
 import java.util.Iterator;
 import java.util.HashMap;
-import java.util.Properties;
 import java.util.Collection;
 
 import gate.*;
@@ -44,18 +38,9 @@ import gate.event.CreoleListener;
 import gate.persist.PersistenceException;
 import gate.util.*;
 import gate.util.persistence.PersistenceManager;
-import java.io.FileInputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.logging.Level;
-import java.util.regex.Pattern;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
 // TODO: use DocumentFormat.getSupportedFileSuffixes() to get the list of 
@@ -160,26 +145,6 @@ public class DirectoryCorpus
   
   protected List<CorpusListener> listeners = new ArrayList<CorpusListener>();
   
-  protected class OurFilenameFilter implements FilenameFilter {
-    @Override
-    public boolean accept(File directory, String filename) {
-      return isValidDocumentName(filename);
-    }
-  }
-  
-  Pattern docNamePatternXmlYesCompressionYes = 
-    Pattern.compile("^[^.][^/\\*\\?\"<>|:]+\\.[Xx][Mm][Ll]\\.gz$");
-  Pattern docNamePatternXmlNoCompressionYes = 
-    Pattern.compile("^[^.][^/\\*\\?\"<>|:]+\\.gz$");
-  Pattern docNamePatternXmlYesCompressionNo = 
-    Pattern.compile("^[^.][^/\\*\\?\"<>|:]+\\.[Xx][Mm][Ll]$");
-  Pattern docNamePatternXmlNoCompressionNo = 
-    Pattern.compile("^[^.][^/\\*\\?\"<>|:]+$");
-  Pattern docNamePatternFinf =
-    Pattern.compile("^[^.][^/\\*\\?\"<>|:]+\\.[Ff][Ii][Nn][Ff$");
-  
-  Pattern filePattern;
-  
   //***************
   // Parameters
   //***************
@@ -250,6 +215,7 @@ public class DirectoryCorpus
   @Override
   public Resource init() 
     throws ResourceInstantiationException {
+    logger.info("DirectoryCorpus: calling init");
     if(directoryURL == null) {
       throw new ResourceInstantiationException("directoryURL must be set");
     }
@@ -258,36 +224,39 @@ public class DirectoryCorpus
     
     // First, get all the supported extensions for reading files
     Set<String> readExtensions = DocumentFormat.getSupportedFileSuffixes();
+    logger.info("DirectoryCorpus/init readExtensions="+readExtensions);
     Set<String> supportedExtensions = new HashSet<String>();
     
     // if we also want to write, we have to limit the supported extensions
     // to those where we have an exporter and also we need to remember which
     // exporter supports which extensions
-    if(!getReadonly()) {
-    List<Resource> des = null;
-    try {
-      // Now get all the Document exporters
-      des = Gate.getCreoleRegister().
-              getAllInstances("gate.DocumentExporter");
-    } catch (GateException ex) {
-      throw new ResourceInstantiationException("Could not get the document exporters",ex);
-    }
-    for(Resource r : des) {
-      DocumentExporter d = (DocumentExporter)r;
-      if(readExtensions.contains(d.getDefaultExtension())) {
-        extension2Exporter.put(d.getDefaultExtension(), d);
-        supportedExtensions.add(d.getDefaultExtension());
+    if (!getReadonly()) {
+      List<Resource> des = null;
+      try {
+        // Now get all the Document exporters
+        des = Gate.getCreoleRegister().
+                getAllInstances("gate.DocumentExporter");
+      } catch (GateException ex) {
+        throw new ResourceInstantiationException("Could not get the document exporters", ex);
       }
-    }
+      for (Resource r : des) {
+        DocumentExporter d = (DocumentExporter) r;
+        if (readExtensions.contains(d.getDefaultExtension())) {
+          extension2Exporter.put(d.getDefaultExtension(), d);
+          supportedExtensions.add(d.getDefaultExtension());
+        }
+      }
     } else {
       supportedExtensions.addAll(readExtensions);
     }
+    logger.info("DirectoryCorpus/init supportedExtensions=" + readExtensions);
 
     // now check if an extension list was specified by the user. If no, nothing
     // needs to be done. If yes, remove all the extensions from the extnesion2Exporter
     // map which were not specified and warn about all the extensions specified
     // for which we do not have an entry. Also remove them from the supportedExtensions set
     if(getExtensions() != null && !getExtensions().isEmpty()) {
+      logger.info("DirectoryCorpu/init getExtgension is not empty: "+getExtensions());
       for(String ext : getExtensions()) {
         if(!supportedExtensions.contains(ext)) {
           logger.warn("DirectoryCorpus warning: extension is not supported: "+ext);
@@ -297,21 +266,20 @@ public class DirectoryCorpus
       Iterator<String> it = supportedExtensions.iterator();
       while(it.hasNext()) {
         String ext = it.next();
+        logger.info("DirectoryCorpus/init checking supported extension: "+ext);
         if(!getExtensions().contains(ext)) {
+          logger.info("DirectoryCorpus/init removing extension: "+ext);
           it.remove();
           extension2Exporter.remove(ext);
         }
       }
     }
-    
+    logger.info("DirectoryCorpus/init supportedExtensions after parms: "+supportedExtensions);
+    logger.info("DirectoryCorpus/init exporter map: "+extension2Exporter);
+
     if(supportedExtensions.isEmpty()) {
       throw new ResourceInstantiationException("DirectoryCorpus could not be created, no file format supported or loaded");
     }
-    
-    // create the pattern which can be used to check if a file path 
-    // matches the extensions we support.
-    String filePatternString = "[^.]+\\.(?:"+StringUtils.join(supportedExtensions,'|')+")";
-    filePattern = Pattern.compile(filePatternString);
     
     backingDirectoryFile = Files.fileFromURL(directoryURL);
     try {
@@ -324,6 +292,22 @@ public class DirectoryCorpus
       throw new ResourceInstantiationException(
               "Not a directory "+backingDirectoryFile);
     }
+    
+    try {
+        ourDS =
+          (DummyDataStore4DirCorp) Factory.createDataStore("at.ofai.gate.virtualcorpus.DummyDataStore4DirCorp", backingDirectoryFile.getAbsoluteFile().toURI().toURL().toString());
+        ourDS.setName("DummyDS4_" + this.getName());
+        ourDS.setComment("Dummy DataStore for DirectoryCorpus " + this.getName());
+        ourDS.setCorpus(this);
+        //System.err.println("Created dummy corpus: "+ourDS+" with name "+ourDS.getName());
+    } catch (Exception ex) {
+        throw new ResourceInstantiationException(
+          "Could not create dummy data store", ex);
+    }
+    logger.info("DirectoryCorpus/init: ds created: "+ourDS.getName());
+
+    
+    
     Iterator<File> fileIt = 
             FileUtils.iterateFiles(backingDirectoryFile, 
             supportedExtensions.toArray(new String[0]), getRecurseDirectory());
@@ -361,17 +345,6 @@ public class DirectoryCorpus
     } catch (PersistenceException e) {
       throw new ResourceInstantiationException(
               "Could not register persistence",e);
-    }
-    try {
-        ourDS =
-          (DummyDataStore4DirCorp) Factory.createDataStore("at.ofai.gate.virtualcorpus.DummyDataStore4DirCorp", backingDirectoryFile.getAbsoluteFile().toURI().toURL().toString());
-        ourDS.setName("DummyDS4_" + this.getName());
-        ourDS.setComment("Dummy DataStore for DirectoryCorpus " + this.getName());
-        ourDS.setCorpus(this);
-        //System.err.println("Created dummy corpus: "+ourDS+" with name "+ourDS.getName());
-    } catch (Exception ex) {
-        throw new ResourceInstantiationException(
-          "Could not create dummy data store", ex);
     }
     Gate.getCreoleRegister().addCreoleListener(this);
     return this;
@@ -537,11 +510,21 @@ public class DirectoryCorpus
     Gate.getDataStoreRegister().remove(ourDS);
   }
 
+  /**
+   * Set the name of the DirectoryCorpus.
+   * Note that this can be called by the factory before init is run!
+   * @param name 
+   */
   @Override
   public void setName(String name) {
+    logger.info("DirectoryCorpus: calling setName with "+name);
     super.setName(name);
-    ourDS.setName("DummyDS4_"+this.getName());
-    ourDS.setComment("Dummy DataStore for DirectoryCorpus "+this.getName());
+    // If we get called before init, there will be no DS yet, so no need
+    // to rename it!
+    if(ourDS != null) {
+      ourDS.setName("DummyDS4_"+this.getName());
+      ourDS.setComment("Dummy DataStore for DirectoryCorpus "+this.getName());
+    }
   }
 
 
@@ -973,15 +956,23 @@ public class DirectoryCorpus
     if(extDotPos <= 0) {
       throw new GateRuntimeException("Did not find a file name extensions when trying to save document "+docName);
     }
-    String ext = docName.substring(extDotPos);
+    String ext = docName.substring(extDotPos+1);
     if(ext.isEmpty()) {
       throw new GateRuntimeException("Encountered empty extension when trying to save document "+docName);
     }
     DocumentExporter de = extension2Exporter.get(ext);
-    de.export(doc, outfile);
+    logger.info("DirectoryCorpus/saveDocument exit is "+ext+" exporter "+de);
+    File docFile = new File(backingDirectoryFile, docName);
+    try {
+      logger.info("DirectoryCorpus/saveDocument trying to save document "+doc.getName()+" using exporter "+de);
+      de.export(doc, docFile);
+      logger.info("DirectoryCorpus/saveDocument saved: "+doc.getName());
+    } catch (IOException ex) {
+      throw new GateRuntimeException("Could not save file: "+docFile,ex);
+    }
   }
   
-  protected Document readDocument(String docName, boolean compression) {
+  protected Document readDocument(String docName) {
     //System.out.println("DirCorp: read doc "+docName);
     File docFile = new File(backingDirectoryFile, docName);
     URL docURL;
@@ -993,121 +984,27 @@ public class DirectoryCorpus
               "Could not create URL for document name "+docName,ex);
     }
     FeatureMap params = Factory.newFeatureMap();
-    if(mimeType != null && !mimeType.isEmpty()) {
-      params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
-    }
-    if(encoding != null && !encoding.isEmpty()) {
-      params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
-    }
-    if(compression) {
-      // TODO: read from URL stream using a compression stream wrapper
-      String content = null;
-      InputStream isorig = null;
-      try {
-        isorig = new FileInputStream(docFile);
-      } catch (FileNotFoundException ex) {
-        throw new GateRuntimeException("Cannot find file though listed in corpus: "+docFile,ex);
-      }
-      InputStream isdec = null;
-      try {
-        isdec = new GZIPInputStream(isorig);
-      } catch (IOException ex) {
-        IOUtils.closeQuietly(isdec);
-        IOUtils.closeQuietly(isorig);
-        throw new GateRuntimeException("IO exception when opening decompress stream for file "+docFile,ex);
-      }
-      try {
-        String usedEncoding = "UTF-8";
-        if(encoding != null && !encoding.isEmpty()) {
-          usedEncoding = encoding;
-        } else if(System.getProperty("file.encoding") != null) {
-          usedEncoding = System.getProperty("file.encoding");
-        }
-        content = IOUtils.toString(isdec, usedEncoding);
-      } catch (IOException ex) {
-        throw new GateRuntimeException("IO exception when reading compressed stream for file "+docFile,ex);
-      }
-      try {
-        isdec.close();
-      } catch (IOException ex) {
-        throw new GateRuntimeException("IO Exception when closing compressed stream for file "+docFile,ex);
-      }
-      try {
-        isorig.close();
-      } catch (IOException ex) {
-        throw new GateRuntimeException("IO Exception when closing file strem for file "+docFile,ex);
-      }
-      params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME,content);
-      if(mimeType != null && !mimeType.isEmpty()) {
-        params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME,mimeType);
-      }
-      if(encoding != null && !encoding.isEmpty()) {
-        params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME,encoding);
-      }
-      try {
-        doc =
+    params.put(Document.DOCUMENT_URL_PARAMETER_NAME,docURL);
+    try {
+       doc =
           (Document) Factory.createResource(
             DocumentImpl.class.getName(),
             params, null, docName);
-      } catch (ResourceInstantiationException ex) {
+    } catch (ResourceInstantiationException ex) {
         throw new GateRuntimeException(
-          "Could not create Document from loaded content from compressed file " + docFile, ex);
-      }
-    } else {
-      params.put(Document.DOCUMENT_URL_PARAMETER_NAME, docURL);
-      try {
-        doc =
-          (Document) Factory.createResource(DocumentImpl.class.getName(),
-          params, null, docName);
-      } catch (ResourceInstantiationException ex) {
-        throw new GateRuntimeException(
-          "Could not create Document from URL " + docURL, ex);
-      }
+          "Could not create Document from file " + docFile, ex);
     }
     return doc;
   }
-  
+
+  // NOTE: not used at the moment, our corpus is always immutable so far!
+  /*
   protected void removeDocument(String docName) {
-    //System.out.println("DirCorp: remove doc "+docName);
-    if(getOutDirectoryURL() != null) {
-      return;
-    }
-    if(getRemoveDocuments() && getSaveDocuments()) {
-      File docFile = new File(outDirectoryFile, docName);
-      docFile.delete();
-    } 
+    File docFile = new File(backingDirectoryFile, docName);
+    docFile.delete();
   }
+  */
   
-  protected boolean isValidDocumentName(String docName) {
-    // this corpus only allows document names that are also valid file names
-    // Names must not start with a dot.
-    // If onlyXML is set, all names must end with ".xml"
-    // Names must not be longer than 200 characters 
-    // If compression is used, the name must end with ".gz"
-    if(docName.length() > 200) {
-      return false;
-    }
-    docNamePatternXmlNoCompressionNo.matcher(name).matches();
-    if( (  onlyXML &&  compress && 
-             !docNamePatternXmlYesCompressionYes.matcher(docName).matches() ) ||
-        (  onlyXML && !compress && 
-             !docNamePatternXmlYesCompressionNo.matcher(docName).matches() ) ||
-        ( !onlyXML &&  compress && 
-             !docNamePatternXmlNoCompressionYes.matcher(docName).matches() ) ||
-        ( !onlyXML && !compress && 
-             !docNamePatternXmlNoCompressionNo.matcher(docName).matches() ) )
-    {
-      return false;
-    }
-    return true;
-  }
-  
-  protected void ensureValidDocumentName(String docName, boolean onlyXML) {
-    if(!isValidDocumentName(docName, onlyXML,getUseCompression())) {
-      throw new GateRuntimeException(
-              "Not a valid document name for a DirectoryCorpus: "+docName);
-    }
-  }
 
   protected void adoptDocument(Document doc) {
     try {

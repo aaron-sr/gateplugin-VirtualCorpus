@@ -13,6 +13,7 @@
  */
 package at.ofai.gate.virtualcorpus;
 
+import gate.DataStore;
 import gate.creole.ResourceInstantiationException;
 import gate.persist.PersistenceException;
 import gate.util.persistence.LRPersistence;
@@ -47,13 +48,10 @@ public class JDBCCorpusPersistence extends LRPersistence {
     // Fake that this LR does not have a DS, that will save it without
     // DS persistence information which will make it possible to restore it
     // without a DS and create the dummy DS ourselves at init time.
-    if(!corpus.isTransientCorpus) {
-      corpus.hideDataStore();
-    }
+    DataStore ds = corpus.getDataStore();
+    corpus.setDataStore(null);
     super.extractDataFromSource(source);
-    if(!corpus.isTransientCorpus) {
-      corpus.unHideDataStore();
-    }
+    corpus.setDataStore(ds);
   }
 
 
