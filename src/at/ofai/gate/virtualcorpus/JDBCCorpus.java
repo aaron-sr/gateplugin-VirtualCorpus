@@ -112,123 +112,68 @@ public class JDBCCorpus
   protected List<CorpusListener> listeners = new ArrayList<CorpusListener>();
   
   
-  //***************
-  // Parameters
-  //***************
-  // JDBC Driver class name (default: mysql)
-  // JDBC url - this should include the database, userid and password
-  // document table
-  // document content field name
-  // document id field name
-  // output document content field name
-  // input document mime type field name or a constant enclosed in quotes
-  // input document encoding field name or a constant enclosed in quotes
-  // document id SQL query (default: select $docid from $doctable
-  // doUpdates (boolean, default true)
 
-  @CreoleParameter(comment = "The JDBC database driver class name",
-    defaultValue = "com.mysql.jdbc.Driver")
-  public void setDriverClassName(String name) {
-    this.driverClassName = name;
-  }
+  protected String jdbcDriver = "org.h2.Driver";
+  @CreoleParameter(
+          comment = "The JDBC driver to use",
+          defaultValue = "org.h2.Driver")
+  // other values: com.mysql.jdbc.Driver
+  public void setJdbcDriver(String driver) { jdbcDriver = driver; }
+  public String getJdbcDriver() { return jdbcDriver; }
+
+  
+  protected String jdbcUrl = "";
+  @CreoleParameter(
+          comment = "The JDBC URL, may contain $prop{name} or $env{name} or ${relpath}",
+          defaultValue = "jdbc:h2:${dbdirectory}/YOURDBPREFIX")
+  // other values: jdbc:mysql://localhost:3306/database?user=user&password=pass
+  public void setJdbcUrl(String url) { jdbcUrl = url; }
+  public String getJdbcUrl() { return jdbcUrl; }
+  
+  protected String jdbcUser = "";
+  @Optional
+  @CreoleParameter(comment = "The JDBC user id",defaultValue = "")
+  public void setJdbcUser(String user) { jdbcUser = user; }
+  public String getJdbcUser() { return jdbcUser; }
+  
+  protected String jdbcPassword = "";
+  @Optional
+  @CreoleParameter(comment = "The JDBC password",defaultValue = "")
+  public void setJdbcPassword(String pw) { jdbcPassword = pw; }
+  public String getJdbcPassword() { return jdbcPassword; }
+  
+  protected URL dbDirectoryUrl = null;
+  @Optional
+  @CreoleParameter(
+          comment = "The location of where a file database is stored. This is not used directly but can be used to replace the ${dbdirectory} variable in the jdbcUrl parameter", defaultValue="file://.")
+  public void setDbDirectoryUrl(URL dir) {dbDirectoryUrl = dir;}
+  public URL getDbDirectoryUrl() {return dbDirectoryUrl;}
+  
+
   /**
    */
-  public String getDriverClassName() {
-    return this.driverClassName;
-  }
-  protected String driverClassName = "com.mysql.jdbc.Driver";
-
-
-
-  /**
-   */
-  @CreoleParameter(comment = "The JDBC connection URL",
-    defaultValue = "jdbc:mysql://localhost:3306/database?user=user&password=pass")
-  public void setConnectionURL(String connectionURL) {
-    this.connectionURL = connectionURL;
-  }
-  /**
-   */
-  public String getConnectionURL() {
-    return this.connectionURL;
-  }
-  protected String connectionURL = "jdbc:mysql://localhost:3306/dbname?user=username&password=pwd";
-
-  @CreoleParameter(comment = "The database table name")
-  public void setTableName(String name) {
-    this.tableName = name;
-  }
-  /**
-   */
-  public String getTableName() {
-    return this.tableName;
-  }
+  @CreoleParameter(comment="The database table name")
+  public void setTableName(String name) { tableName = name; }
+  public String getTableName() { return tableName;}
   protected String tableName;
 
+  
   @CreoleParameter(comment = "The document id/name field name")
-  public void setDocumentNameField(String fieldname) {
-    this.documentNameField = fieldname;
-  }
-  /**
-   */
-  public String getDocumentNameField() {
-    return this.documentNameField;
-  }
+  public void setDocumentNameField(String name) { documentNameField = name; }
+  public String getDocumentNameField() { return documentNameField; }
   protected String documentNameField;
 
   @CreoleParameter(comment = "The document content field name")
-  public void setDocumentContentField(String fieldname) {
-    this.documentContentField = fieldname;
-  }
-  /**
-   */
-  public String getDocumentContentField() {
-    return this.documentContentField;
-  }
+  public void setDocumentContentField(String name) { documentContentField = name; }
+  public String getDocumentContentField() { return documentContentField; }
   protected String documentContentField;
 
-  @CreoleParameter(comment = "The output document content field name")
   @Optional
-  public void setOutDocumentContentField(String fieldname) {
-    this.outDocumentContentField = fieldname;
-  }
-  /**
-   * @return 
-   */
-  public String getOutDocumentContentField() {
-    return this.outDocumentContentField;
-  }
-  protected String outDocumentContentField = "";
-
   @CreoleParameter(
-    comment = "Mime type of input content - field name or type in quotes",
-    defaultValue = "")
-  @Optional
-  public void setMimeTypeField(String fieldname) {
-    this.mimeTypeField = fieldname;
-  }
-  /**
-   * @return 
-   */
-  public String getMimeTypeField() {
-    return this.mimeTypeField;
-  }
-  protected String mimeTypeField = "";
-
-  @CreoleParameter(
-    comment = "Encoding of input content - field name or type in quotes",
-    defaultValue = "")
-  @Optional
-  public void setEncodingField(String fieldname) {
-    this.encodingField = fieldname;
-  }
-  /**
-   * @return 
-   */
-  public String getEncodingField() {
-    return this.encodingField;
-  }
-  protected String encodingField = "";
+    comment = "Mime type of content, if empty, GATE XML is assumed", defaultValue = "")
+  public void setMimeType(String type) { mimeType = type; }
+  public String getMimeType() { return mimeType; }
+  protected String mimeType = "";
 
 
   @CreoleParameter(comment = "SQL Query for selecting the set of document ids/names",
@@ -245,32 +190,13 @@ public class JDBCCorpus
   }
   protected String selectSQL = "SELECT ${documentNameField} from ${tableName}";
 
-  @CreoleParameter(comment = "URL of a property file for setting the other parameters")
-  @Optional
-  public void setInitParmsFileURL(URL url) {
-    initParmsFileURL = url;
-  }
-  public URL getInitParmsFileURL() {
-    return initParmsFileURL;
-  }
-  protected URL initParmsFileURL;
 
-  // fields
+  protected DummyDataStore4JDBCCorp ourDS = null;
+  protected Connection dbConnection = null;
+  protected PreparedStatement getContentStatement = null;
+  protected PreparedStatement updateContentStatement = null;
 
-  DummyDataStore4JDBCCorp ourDS = null;
-  Connection dbConnection = null;
-  PreparedStatement getContentStatement = null;
-  PreparedStatement getEncodingStatement = null;
-  PreparedStatement getMimeTypeStatement = null;
-  PreparedStatement updateContentStatement = null;
-  PreparedStatement insertContentStatement = null;
-  PreparedStatement deleteRowStatement = null;
-
-  boolean haveMimeTypeField = false;
-  boolean haveMimeTypeConstant = false;
-  boolean haveEncodingField = false;
-  boolean haveEncodingConstant = false;
-  String mimeType = "application/xml";
+  private static final String DEFAULT_MIME_TYPE = "application/xml";
   String encoding = "utf-8";
 
   @Override
@@ -279,43 +205,6 @@ public class JDBCCorpus
    */
   public Resource init() 
     throws ResourceInstantiationException {
-
-    if(initParmsFileURL != null) {
-      File initparmsfile = gate.util.Files.fileFromURL(initParmsFileURL);
-      Properties props = new Properties();
-      try {
-        props.load(new FileInputStream(initparmsfile));
-      } catch (IOException ex) {
-        throw new ResourceInstantiationException(
-          "Could not read propertiles from file "+initParmsFileURL,ex);
-      }
-      for (String prop : props.stringPropertyNames()) {
-        String val = props.getProperty(prop);
-        System.out.println("Setting parameter "+prop+"="+val);
-        // TODO: we could make this dynamically adjust to our parameters by inspection
-        if(prop.equals("connectionURL")) {
-            setConnectionURL(val);
-        } else if(prop.equals("documentContentField")) {
-            setDocumentContentField(val);
-        } else if(prop.equals("documentNameField")) {
-            setDocumentNameField(val); 
-        } else if(prop.equals("driverClassName")) {
-            setDriverClassName(val); 
-        } else if(prop.equals("encodingField")) {
-            setEncodingField(val); 
-        } else if(prop.equals("mimeTypeField")) {
-            setMimeTypeField(val);
-        } else if(prop.equals("outDocumentContentField")) {
-            setOutDocumentContentField(val);
-        } else if(prop.equals("selectSQL")) {
-            setSelectSQL(val);
-        } else if(prop.equals("tableName")) {
-            setTableName(val);
-        } else {
-            System.err.println("Parameter "+prop+"="+val+" not found");
-        }
-      }
-    }
     if(getTableName() == null || getTableName().equals("")) {
       throw new ResourceInstantiationException("tableName must not be empty");
     }
@@ -331,9 +220,28 @@ public class JDBCCorpus
     String query = getSelectSQL(); // this contains the ${tableName} and ${documentNameField} vars
     query = query.replaceAll(Pattern.quote("${tableName}"), getTableName());
     query = query.replaceAll(Pattern.quote("${documentNameField}"), getDocumentNameField());
+    String expandedUrl = "";
     try {
-      Class.forName(getDriverClassName());
-      dbConnection = DriverManager.getConnection(getConnectionURL());
+      Class.forName(getJdbcDriver());
+      String dbdirectory = "";
+      if(getDbDirectoryUrl().getProtocol().equals("file")) {
+        dbdirectory = getDbDirectoryUrl().getPath();
+        dbdirectory = new File(dbdirectory).getAbsolutePath();
+      } else {
+        throw new GateRuntimeException("The database directory URL is not a file URL");
+      }
+      Map<String,String> dbdirectoryMap = new HashMap<String,String>();
+      dbdirectoryMap.put("dbdirectory", dbdirectory);
+      
+      expandedUrl = 
+        gate.Utils.replaceVariablesInString(jdbcUrl, dbdirectoryMap, this);
+      String expandedUser = 
+        gate.Utils.replaceVariablesInString(jdbcUser, dbdirectoryMap, this);
+      String expandedPassword = 
+        gate.Utils.replaceVariablesInString(jdbcPassword, dbdirectoryMap, this);
+      
+      System.out.println("Using JDBC URL: "+expandedUrl);
+      dbConnection = DriverManager.getConnection(expandedUrl, expandedUser, expandedPassword);
     } catch (Exception ex) {
       throw new ResourceInstantiationException("Could not get driver/connection",ex);
     }
@@ -361,11 +269,12 @@ public class JDBCCorpus
       throw new ResourceInstantiationException(
               "Could not register persistence",e);
     }
-    if (!isTransientCorpus) {
       try {
         // TODO: use more fields or a hash to make this unique?
         ourDS =
-          (DummyDataStore4JDBCCorp) Factory.createDataStore("at.ofai.gate.virtualcorpus.DummyDataStore4JDBCCorp", getConnectionURL() + "//" + getTableName());
+          (DummyDataStore4JDBCCorp) Factory.createDataStore(
+                "at.ofai.gate.virtualcorpus.DummyDataStore4JDBCCorp", 
+                expandedUrl + "//" + getTableName());
         ourDS.setName("DummyDS4_" + this.getName());
         ourDS.setComment("Dummy DataStore for JDBCCorpus " + this.getName());
         ourDS.setCorpus(this);
@@ -374,33 +283,8 @@ public class JDBCCorpus
         throw new ResourceInstantiationException(
           "Could not create dummy data store", ex);
       }
-    }
     Gate.getCreoleRegister().addCreoleListener(this);
 
-    // check if we have field names or constants or nothing at all for
-    // mime type and encoding
-    String mt = getMimeTypeField();
-    if(mt.length() > 2 && mt.startsWith("\"") && mt.endsWith("\"")) {
-      haveMimeTypeConstant = true;
-      mimeType = mt.substring(1,mt.length()-1);
-      System.out.println("Have constant mime type: "+mimeType);
-    } else if(mt.length() > 0) {
-      haveMimeTypeField = true;
-      System.out.println("Have mime type field: "+getMimeTypeField());
-    } else {
-      System.out.println("No mime type field and no constant mimetype specified");
-    }
-    String enc = getEncodingField();
-    if(enc.length() > 2 && enc.startsWith("\"") && enc.endsWith("\"")) {
-      haveEncodingConstant = true;
-      encoding = enc.substring(1,enc.length()-1);
-      System.out.println("Have constant encoding: "+encoding);
-    } else if (enc.length() > 0) {
-      haveEncodingField = true;
-      System.out.println("Have encoding field: "+getEncodingField());
-    } else {
-      System.out.println("No encoding field and no constant encoding specified");
-    }
 
     // create all the prepared statements we need for accessing stuff in the db
     try {
@@ -408,56 +292,7 @@ public class JDBCCorpus
         getTableName()+" WHERE "+getDocumentNameField()+" = ?";
       System.out.println("Preparing get document statement: "+query);
       getContentStatement = dbConnection.prepareStatement(query);
-      if(haveEncodingField) {
-        query = "SELECT "+getEncodingField()+" FROM "+
-          getTableName()+" WHERE "+getDocumentNameField()+" = ?";
-        System.out.println("Preparing get encoding statement: "+query);
-        getEncodingStatement = dbConnection.prepareStatement(query);
-      }
-      if(haveMimeTypeField) {
-        query = "SELECT "+getMimeTypeField()+" FROM "+
-          getTableName()+" WHERE "+getDocumentNameField()+" = ?";
-        System.out.println("Preparing get mimetype statement: "+query);
-        getMimeTypeStatement = dbConnection.prepareStatement(query);
-      }
       String outfield = getDocumentContentField();
-      if(getOutDocumentContentField() != null && !getOutDocumentContentField().equals("")) {
-        outfield = getOutDocumentContentField();
-      }
-      query = "UPDATE "+getTableName()+" SET "+outfield+" = ? "+
-        " WHERE "+getDocumentNameField()+" = ?";
-      System.out.println("Preparing update document statement: "+query);
-      updateContentStatement = dbConnection.prepareStatement(query);
-      // for the insertion we need to prepare the statement depending on 
-      // whether the encoding and/or mimetype fields are there 
-      if(haveEncodingField) {
-        if(haveMimeTypeField) {
-          // both encoding and mimetype fields
-          query = "INSERT INTO "+getTableName()+
-            " ( "+getDocumentNameField()+","+outfield+","+encodingField+
-            ","+mimeTypeField+" ) VALUES ( ?,?,?,? )";
-        } else {
-          // encoding field but no mime type field
-          query = "INSERT INTO "+getTableName()+
-            " ( "+getDocumentNameField()+","+outfield+","+encodingField+" ) VALUES ( ?,?,? )";          
-        }
-      } else {
-        if(haveMimeTypeField) {
-          // no encoding but mimetype 
-          query = "INSERT INTO "+getTableName()+
-            " ( "+getDocumentNameField()+","+outfield+","+mimeTypeField+" ) VALUES ( ?,?,? )";          
-        } else {
-          // no encoding and no mime type
-          query = "INSERT INTO "+getTableName()+
-            " ( "+getDocumentNameField()+","+outfield+") VALUES ( ?,? )";          
-        }
-      }
-      System.out.println("Preparing insert statement: "+query);
-      insertContentStatement = dbConnection.prepareStatement(query);
-      query = "DELETE FROM "+getTableName()+
-        " WHERE "+getDocumentNameField()+" = ?";
-      System.out.println("Preparing delete statement: "+query);
-      deleteRowStatement = dbConnection.prepareStatement(query);
 
     } catch (SQLException ex) {
       throw new ResourceInstantiationException("Could not prepare statement",ex);
