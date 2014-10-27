@@ -349,6 +349,7 @@ public class JDBCCorpus
     }
     if(isDocumentLoaded(index)) {
       // if saveOnUnload is set, save the document
+      /* TEMPORARY 
       if(saveDocuments) {
         try {
           saveDocument(doc);
@@ -356,6 +357,7 @@ public class JDBCCorpus
           throw new GateRuntimeException("Problem saving document "+docName,ex);
         }
       }
+      */
       loadedDocuments.remove(docName);
       isLoadeds.set(index, false);
       //System.err.println("Document unloaded: "+docName);
@@ -419,6 +421,7 @@ public class JDBCCorpus
       URL directory, FileFilter filter, 
       String encoding, String mimeType, 
       boolean recurseDirectories) {
+    /* TEMPORARY
     if(isTransientCorpus) {
       throw new GateRuntimeException("Cannot populate a transient JDBC corpus");
     } else {
@@ -428,17 +431,14 @@ public class JDBCCorpus
         throw new GateRuntimeException("IO error",ex);
       }
     }
+    */
   }
 
   /**
    * @return 
    */
   public DataStore getDataStore() {
-    if(dataStoreIsHidden) {
-      return null;
-    } else {
       return ourDS;
-    }
   }
 
   /**
@@ -481,9 +481,7 @@ public class JDBCCorpus
     } catch (SQLException ex) {
       // TODO: log, but otherwise ignore
     }
-    if(!isTransientCorpus) {
       Gate.getDataStoreRegister().remove(ourDS);
-    }
   }
 
   @Override
@@ -507,6 +505,7 @@ public class JDBCCorpus
    * If the document is already adopted by some data store throw an exception.
    */
   public boolean add(Document doc) {
+    /* TEMPORARY
     if(!saveDocuments) {
       return false;
     }
@@ -532,10 +531,13 @@ public class JDBCCorpus
         adoptDocument(doc);
       }
       fireDocumentAdded(new CorpusEvent(
-          this, doc, i, CorpusEvent.DOCUMENT_ADDED));
+          t    }
+his, doc, i, CorpusEvent.DOCUMENT_ADDED));
       
       return true;
     }
+    */ 
+    return true;
   }
 
 
@@ -547,20 +549,14 @@ public class JDBCCorpus
    * a GateRuntimeException.
    */
   public void clear() {
+    /** TEMPORARY
     if(!saveDocuments) {
       return;
     }
-    /*
-    if(outDirectoryURL != null) {
-      throw new GateRuntimeException(
-              "clear method not supported when outDirectoryURL is set for "+
-              this.getName());
-    }
-     * 
-     */
     for(int i=documentNames.size()-1; i>=0; i--) {
       remove(i);
     }
+    */
   }
   
   /**
@@ -607,9 +603,7 @@ public class JDBCCorpus
     }
     loadedDocuments.put(docName, doc);
     isLoadeds.set(index, true);
-    if(!isTransientCorpus) {
       adoptDocument(doc);
-    }
     return doc;
   }
 
@@ -701,13 +695,11 @@ public class JDBCCorpus
     isLoadeds.remove(index);
     documentIndexes.remove(docName);
     removeDocument(docName);
-    if (!isTransientCorpus) {
       try {
         doc.setDataStore(null);
       } catch (PersistenceException ex) {
         // this should never happen
       }
-    }
     fireDocumentRemoved(new CorpusEvent(
         this, doc,
         index, CorpusEvent.DOCUMENT_REMOVED));
@@ -737,13 +729,11 @@ public class JDBCCorpus
     documentIndexes.remove(docName);
     removeDocument(docName);  
     Document doc = isDocumentLoaded(index) ? (Document)get(index) : null;
-    if (!isTransientCorpus) {
       try {
         doc.setDataStore(null);
       } catch (PersistenceException ex) {
         // this should never happen
       }
-    }
     fireDocumentRemoved(new CorpusEvent(
         this, doc,
         index, CorpusEvent.DOCUMENT_REMOVED));
@@ -830,6 +820,7 @@ public class JDBCCorpus
   // helper methods
   // ************************
   protected void saveDocument(Document doc) throws ResourceInstantiationException, IOException, SQLException {
+    /* TEMPORARY
     if(!getSaveDocuments()) {
       return;
     }
@@ -847,8 +838,10 @@ public class JDBCCorpus
       updateContentStatement.setString(1, docContent);
       updateContentStatement.execute();
     }
+    */
   }
   protected void insertDocument(Document doc) throws SQLException, ResourceInstantiationException, IOException {
+    /* TEMPORARY
     if (!getSaveDocuments()) {
       return;
     }
@@ -883,6 +876,7 @@ public class JDBCCorpus
       insertContentStatement.setString(2, docContent);
       insertContentStatement.execute();
     }
+    */
   }
   
   protected InputStream getGZIPCompressedInputStream(String theString, String theEncoding) 
@@ -901,7 +895,7 @@ public class JDBCCorpus
     Document doc = null;
 
     ResultSet rs = null;
-    
+    /* TEMPORARY
     String docEncoding = encoding;
     if (haveEncodingField) {
       getEncodingStatement.setString(1, docName);
@@ -957,6 +951,7 @@ public class JDBCCorpus
     } catch (Exception ex) {
       throw new GateRuntimeException("Exception creating the document", ex);
     }
+    */
     return doc;
   }
   
@@ -974,6 +969,7 @@ public class JDBCCorpus
   
   
   protected void removeDocument(String docName) {
+    /* TEMPORARY
     if(getRemoveDocuments() && getSaveDocuments()) {
       try {
         deleteRowStatement.execute();
@@ -981,6 +977,7 @@ public class JDBCCorpus
         throw new GateRuntimeException("Problem when trying to delete table row for document "+docName,ex);
       }
     }
+    */
   }
   
   
