@@ -14,6 +14,7 @@
 
 package at.ofai.gate.virtualcorpus;
 
+import gate.Corpus;
 import gate.DataStore;
 import gate.FeatureMap;
 import gate.LanguageResource;
@@ -29,9 +30,21 @@ public abstract class DummyDataStore4Virtuals
 implements DataStore {
 
   String storageURL = "";
-  String myName = "";
-  FeatureMap myFeatures = null;
+  protected String myName = "";
+  protected FeatureMap myFeatures = null;
+  protected String ourComment = "Dummy DataStore for a VirtualCorpus";
+  protected VirtualCorpus ourCorpus;
 
+  public void setCorpus(VirtualCorpus corpus) {
+    ourCorpus = corpus;
+  }
+
+  public VirtualCorpus getCorpus() {
+    return ourCorpus;
+  }
+  
+  
+  
   public void setStorageUrl(String storageUrl) throws PersistenceException {
     this.storageURL = storageUrl;
   }
@@ -158,6 +171,7 @@ implements DataStore {
     throw new UnsupportedOperationException("Not supported.");
   }
 
+  @Override
   public String getLrName(Object lrId) throws PersistenceException {
     throw new UnsupportedOperationException("Not supported.");
   }
@@ -166,6 +180,7 @@ implements DataStore {
    * This does nothing at all. The dummy datastore does not fire any events.
    * @param l
    */
+  @Override
   public void addDatastoreListener(DatastoreListener l) {
   }
 
@@ -173,45 +188,60 @@ implements DataStore {
    * This does nothing at all. The dummy datastore does not fire any events.
    * @param l
    */
+  @Override
   public void removeDatastoreListener(DatastoreListener l) {    
   }
 
+  @Override
   public String getIconName() {
     return "datastore";
   }
 
+  @Override
   public String getComment() {
-    return "Dummy DataStore";
+    return ourComment;
+  }
+  
+  public void setComment(String comment) {
+    ourComment = comment;
   }
 
+  @Override
   public boolean canReadLR(Object lrID) throws PersistenceException {
     throw new UnsupportedOperationException("Not supported yet.");
   }
 
+  @Override
   public boolean canWriteLR(Object lrID) throws PersistenceException {
     throw new UnsupportedOperationException("Not supported yet.");
   }
 
+  @Override
   public boolean lockLr(LanguageResource lr) throws PersistenceException {
     throw new UnsupportedOperationException("Not supported yet.");
   }
 
+  @Override
   public void unlockLr(LanguageResource lr) throws PersistenceException {
     throw new UnsupportedOperationException("Not supported yet.");
   }
 
+  @Override
   public FeatureMap getFeatures() {
     return myFeatures;
   }
 
+  @Override
   public void setFeatures(FeatureMap features) {
     myFeatures = features;
   }
 
+  @Override
   public void setName(String name) {
     myName = name;
   }
 
+  @Override
   public String getName() {
     return myName;
   }

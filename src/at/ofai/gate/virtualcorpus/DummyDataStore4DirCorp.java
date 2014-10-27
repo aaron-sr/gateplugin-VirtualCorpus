@@ -35,17 +35,6 @@ import gate.Resource;
 public class DummyDataStore4DirCorp
   extends DummyDataStore4Virtuals {
 
-  DirectoryCorpus ourCorpus = null;
-
-  String ourComment = "Dummy Datastore for a DirectoryCorpus";
-
-  public void setCorpus(DirectoryCorpus corpus) {
-    ourCorpus = corpus;
-  }
-
-  public DirectoryCorpus getCorpus() {
-    return ourCorpus;
-  }
 
   /**
    *
@@ -129,14 +118,6 @@ public class DummyDataStore4DirCorp
     System.err.println("This resource cannot be closed, it will be closed automatically when DirectoryCorpus "+getCorpusName()+" is closed");
   }
 
-  @Override
-  public String getComment() {
-    return ourComment;
-  }
-
-  public void setComment(String comment) {
-    ourComment = comment;
-  }
 
   private String getCorpusName() {
     if(getCorpus() != null) {

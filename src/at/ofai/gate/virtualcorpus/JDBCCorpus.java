@@ -53,6 +53,7 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
 
 /** 
  * A Corpus LR that mirrors documents stored in a JDBC database table field.
@@ -100,14 +101,6 @@ public class JDBCCorpus
    */
   private static final long serialVersionUID = -8485133333415382902L;
 
-  // for accessing document name by index
-  protected List<String> documentNames = new ArrayList<String>();
-  // for checking if ith document is loaded
-  protected List<Boolean> isLoadeds = new ArrayList<Boolean>();
-  // for finding index for document name
-  //REMOVE protected Map<String,Integer> documentIndexes = new HashMap<String,Integer>();
-  
-  protected Map<String,Document> loadedDocuments = new HashMap<String,Document>();
   
   protected List<CorpusListener> listeners = new ArrayList<CorpusListener>();
   
@@ -199,6 +192,8 @@ public class JDBCCorpus
   private static final String DEFAULT_MIME_TYPE = "application/xml";
   String encoding = "utf-8";
 
+  private static Logger logger = Logger.getLogger(JDBCCorpus.class);
+  
   @Override
   /**
    * Initializes the JDBCCorpus LR
@@ -303,96 +298,6 @@ public class JDBCCorpus
   }
   
   /**
-   * Test is the document with the given index is loaded. If an index is 
-   * specified that is not in the corpus, a GateRuntimeException is thrown.
-   * 
-   * @param index 
-   * @return true if the document is loaded, false otherwise. 
-   */
-  public boolean isDocumentLoaded(int index) {
-    if(index < 0 || index >= isLoadeds.size()) {
-      throw new GateRuntimeException("Document number "+index+
-              " not in corpus "+this.getName()+" of size "+isLoadeds.size());
-    }
-    //System.out.println("isDocumentLoaded called: "+isLoadeds.get(index));
-    return isLoadeds.get(index);
-  }
-
-  public boolean isDocumentLoaded(Document doc) {
-    String docName = doc.getName();
-    //System.out.println("DirCorp: called unloadDocument: "+docName);
-    Integer index = documentIndexes.get(docName);
-    if(index == null) {
-      throw new RuntimeException("Document "+docName+
-              " is not contained in corpus "+this.getName());
-    }
-    return isDocumentLoaded(index);
-  }
-
-  /**
-   * Unload a document from the corpus. When a document is unloaded it
-   * is automatically stored in GATE XML format to the directory where it
-   * was read from or to the directory specified for the outDirectoryURL
-   * parameter. If saveDocuments is false, nothing is saved at all.
-   * if the document is not part of the corpus, a GateRuntimeException is
-   * thrown.
-   *
-   * @param doc
-   */
-  public void unloadDocument(Document doc) {
-    String docName = doc.getName();
-    //System.out.println("DirCorp: called unloadDocument: "+docName);
-    Integer index = documentIndexes.get(docName);
-    if(index == null) {
-      throw new RuntimeException("Document "+docName+
-              " is not contained in corpus "+this.getName());
-    }
-    if(isDocumentLoaded(index)) {
-      // if saveOnUnload is set, save the document
-      /* TEMPORARY 
-      if(saveDocuments) {
-        try {
-          saveDocument(doc);
-        } catch (Exception ex) {
-          throw new GateRuntimeException("Problem saving document "+docName,ex);
-        }
-      }
-      */
-      loadedDocuments.remove(docName);
-      isLoadeds.set(index, false);
-      //System.err.println("Document unloaded: "+docName);
-    } // else silently do nothing
-  }
-  
-  
-  public void removeCorpusListener(CorpusListener listener) {
-    listeners.remove(listener);
-  }
-  public void addCorpusListener(CorpusListener listener) {
-    listeners.add(listener);
-  }
-
-  /**
-   * Get the list of document names in this corpus.
-   *
-   * @return the list of document names 
-   */
-  public List<String> getDocumentNames() {
-    List<String> newList = new ArrayList<String>(documentNames);
-    return newList;
-  }
-
-  /**
-   * Return the name of the document with the given index from the corpus. 
-   *
-   * @param i the index of the document to return
-   * @return the name of the document with the given index
-   */
-  public String getDocumentName(int i) {
-    return documentNames.get(i);
-  }
-
-  /**
    * This method is not implemented and throws a
    * gate.util.MethodNotImplementedException.
    * 
@@ -432,40 +337,6 @@ public class JDBCCorpus
       }
     }
     */
-  }
-
-  /**
-   * @return 
-   */
-  public DataStore getDataStore() {
-      return ourDS;
-  }
-
-  /**
-   * This always throws a PersistenceException as this kind of corpus cannot
-   * be saved to a datastore.
-   * 
-   * @param ds
-   * @throws PersistenceException
-   */
-  public void setDataStore(DataStore ds) throws PersistenceException {
-    throw new PersistenceException("Corpus "+this.getName()+
-            " cannot be saved to a datastore");
-  }
-
-  /**
-   * This follows the convention for transient corpus objects and always
-   * returns false.
-   * 
-   * @return always false
-   */
-  public boolean isModified() {
-    return false;
-  }
-
-  @Override
-  public void sync() {
-    // TODO: save document!?!?!?
   }
 
 
@@ -626,65 +497,27 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
   }
 
   /**
-   * Check if the corpus is empty.
-   *
-   * @return true if the corpus is empty
-   */
-  public boolean isEmpty() {
-    return (documentNames.size() == 0);
-  }
-
-  /**
    * Returns an iterator to iterate through the documents of the
    * corpus. The iterator does not allow modification of the corpus.
    * 
    * @return
    */
+  @Override
   public Iterator<Document> iterator() {
     return new JDBCCorpusIterator();
   }
 
-  /**
-   * This method is not implemented and always throws a
-   * MethodNotImplementedException.
-   * 
-   * @param docObj
-   * @return
-   */
-  public int lastIndexOf(Object docObj) {
-    throw new MethodNotImplementedException(
-            notImplementedMessage("lastIndexOf(Object)"));
-  }
-
-  /**
-   * This method is not implemented and always throws a
-   * MethodNotImplementedException.
-   *
-   * @return
-   */
-  public ListIterator<Document> listIterator() {
-    throw new MethodNotImplementedException(
-            notImplementedMessage("listIterator"));
-  }
-
-  /**
-   * This method is not implemented and always throws a
-   * MethodNotImplementedException.
-   *
-   *
-   * @param i
-   * @return
-   */
-  public ListIterator<Document> listIterator(int i) {
-    throw new MethodNotImplementedException(
-            notImplementedMessage("listIterator(int)"));
-  }
 
   /**
    * 
    * @param index
    * @return the document that was just removed from the corpus
    */
+  @Override
+  public Document remove(int index) {
+    throw new MethodNotImplementedException(notImplementedMessage("remove(int)"));
+  }
+  /*
   public Document remove(int index) {
     Document doc = (Document)get(index);
     String docName = documentNames.get(index);
@@ -705,6 +538,7 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
         index, CorpusEvent.DOCUMENT_REMOVED));
     return doc;
   }
+  */
 
   /**
    * Removes a document with the same name as the given document
@@ -718,6 +552,11 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
    * @param docObj
    * @return true if a document was removed from the corpus
    */
+  @Override
+  public boolean remove(Object docObj) {
+    throw new MethodNotImplementedException(notImplementedMessage("remove(Object)"));
+  }
+  /*
   public boolean remove(Object docObj) {
     int index = indexOf(docObj);
     if(index == -1) {
@@ -739,6 +578,7 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
         index, CorpusEvent.DOCUMENT_REMOVED));
     return true;
   }
+  */
 
   /**
    * Remove all the documents in the collection from the corpus.
@@ -746,6 +586,11 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
    * @param coll
    * @return true if any document was removed
    */
+  @Override
+  public boolean removeAll(Collection coll) {
+    throw new MethodNotImplementedException(notImplementedMessage("removeAll(Collection)"));
+  }
+  /*
   public boolean removeAll(Collection coll) {
     boolean ret = false;
     for(Object docObj : coll) {
@@ -753,73 +598,17 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
     }
     return ret;
   }
+  */
 
   public int size() {
     return documentNames.size();
   }
 
-  //****** 
-  //Listener methods
-  //***********
-  protected void fireDocumentAdded(CorpusEvent e) {
-    for(CorpusListener listener : listeners) {
-      listener.documentAdded(e);
-    }
-  }
-
-  protected void fireDocumentRemoved(CorpusEvent e) {
-    for(CorpusListener listener : listeners) {
-      listener.documentRemoved(e);
-    }
-  }
-
-  public void resourceLoaded(CreoleEvent e) {
-    //System.out.println("DirCorp: Resource loaded");
-  }
-
-  public void resourceRenamed(
-          Resource resource,
-          String oldName,
-          String newName) {
-    // if one of our documents gets renamed, rename it back and
-    // write an error message
-    if(resource instanceof Document) {
-      Document doc = (Document)resource;
-      if(loadedDocuments.containsValue(doc)) {
-        System.err.println("ERROR: documents from a JDBC corpus cannot be renamed!");
-        doc.setName(oldName);
-      }
-    }
-  }
-
-  public void resourceUnloaded(CreoleEvent e) {
-    Resource res = e.getResource();
-    if(res instanceof Document) {
-      Document doc = (Document)res;
-      // check if this document has actually been loaded by us
-      if(loadedDocuments.containsValue(doc)) {
-        unloadDocument(doc);
-      } // else: its not ours, ignore
-    } else if(res == this) {
-      Gate.getCreoleRegister().removeCreoleListener(this);
-    }
-  }
-
-  public void datastoreClosed(CreoleEvent ev) {
-  }
-  
-  public void datastoreCreated(CreoleEvent ev) {
-    
-  }
-  
-  public void datastoreOpened(CreoleEvent ev) {
-    
-  }
-  
   //**************************
   // helper methods
   // ************************
-  protected void saveDocument(Document doc) throws ResourceInstantiationException, IOException, SQLException {
+  @Override
+  protected void saveDocument(Document doc) {
     /* TEMPORARY
     if(!getSaveDocuments()) {
       return;
@@ -840,8 +629,8 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
     }
     */
   }
+  /*
   protected void insertDocument(Document doc) throws SQLException, ResourceInstantiationException, IOException {
-    /* TEMPORARY
     if (!getSaveDocuments()) {
       return;
     }
@@ -876,8 +665,9 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
       insertContentStatement.setString(2, docContent);
       insertContentStatement.execute();
     }
-    */
+    
   }
+  */
   
   protected InputStream getGZIPCompressedInputStream(String theString, String theEncoding) 
     throws IOException {
@@ -955,21 +745,10 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
     return doc;
   }
   
-  protected String getActiveEncoding(String docEncoding) {
-    String usedEncoding = "UTF-8";  // if all else fails, use UTF8
-    if(docEncoding != null && !docEncoding.isEmpty()) {
-      usedEncoding = docEncoding;  // encoding from or for document overwrites all else
-    } else if (encoding != null && !encoding.isEmpty()) { 
-      usedEncoding = encoding; // use LR's encoding parameter
-    } else if (System.getProperty("file.encoding") != null) {
-      usedEncoding = System.getProperty("file.encoding");
-    }
-    return usedEncoding;
-  }
   
-  
+  /*
   protected void removeDocument(String docName) {
-    /* TEMPORARY
+    
     if(getRemoveDocuments() && getSaveDocuments()) {
       try {
         deleteRowStatement.execute();
@@ -977,8 +756,8 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
         throw new GateRuntimeException("Problem when trying to delete table row for document "+docName,ex);
       }
     }
-    */
   }
+  */
   
   
   protected void adoptDocument(Document doc) {
