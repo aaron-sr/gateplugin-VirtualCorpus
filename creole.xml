@@ -1,6 +1,6 @@
 <CREOLE-DIRECTORY 
   ID="com.jpetrak.VirtualCorpus" 
-  VERSION="0.14" 
+  VERSION="0.16" 
   DESCRIPTION="Virtual Corpus LRs for directories or JDBC databases"
   HELPURL="http://code.google.com/p/gateplugin-virtualcorpus/"
 >
