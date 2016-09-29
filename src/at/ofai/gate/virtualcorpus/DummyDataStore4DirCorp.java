@@ -1,15 +1,22 @@
 /*
- *  DummyDataStore4DirCorp.java
+ * Copyright (c) 2010- Austrian Research Institute for Artificial Intelligence (OFAI). 
+ * Copyright (C) 2013-2016 The University of Sheffield.
  *
- * Copyright (c) 2010, Austrian Research Institute for
- * Artificial Intelligence (OFAI)
+ * This file is part of gateplugin-VirtualCorpus
+ * (see https://github.com/johann-petrak/gateplugin-VirtualCorpus)
  *
- * This file is free
- * software, licenced under the GNU General Public License, Version 2
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public License
+ * as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
  *
- *  Johann Petrak, 30/8/2010
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
  *
- *  $Id: DummyDataStore4DirCorp.java 123 2014-04-24 17:03:56Z johann.petrak $
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this software. If not, see <http://www.gnu.org/licenses/>.
  */
 
 package at.ofai.gate.virtualcorpus;

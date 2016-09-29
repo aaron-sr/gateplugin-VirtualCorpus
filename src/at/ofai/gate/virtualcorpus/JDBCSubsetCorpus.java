@@ -1,17 +1,22 @@
 /*
- *  JDBCSubsetCorpus.java
+ * Copyright (c) 2010- Austrian Research Institute for Artificial Intelligence (OFAI). 
+ * Copyright (C) 2013-2016 The University of Sheffield.
  *
+ * This file is part of gateplugin-VirtualCorpus
+ * (see https://github.com/johann-petrak/gateplugin-VirtualCorpus)
  *
- * Copyright (c) 2010, Austrian Research Institute for
- * Artificial Intelligence (OFAI)
- * http://www.ofai.at
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public License
+ * as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
  *
- * This file is free
- * software, licenced under the GNU General Public License, Version 2
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
  *
- *  Johann Petrak, 30/8/2010
- *
- *  $Id: DirectoryCorpus.java 42 2011-02-07 12:56:46Z johann.petrak $
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this software. If not, see <http://www.gnu.org/licenses/>.
  */
 
 package at.ofai.gate.virtualcorpus;
