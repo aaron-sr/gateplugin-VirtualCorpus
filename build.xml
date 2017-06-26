@@ -1,9 +1,9 @@
-<project name="VirtualCorpus" basedir="." default="jar">
+<project name="gateplugin-VirtualCorpus" basedir="." default="jar">
 
   <property file="build.properties" />
 
   <!-- Name of the plugin -->
-  <property name="plugin.name" value="VirtualCorpus"/>
+  <property name="plugin.name" value="gateplugin-VirtualCorpus"/>
 
   <!-- Make environment variables available -->
   <property environment="env" />
