@@ -263,8 +263,11 @@ public abstract class VirtualCorpus
    */
   @Override
   public void setDataStore(DataStore ds) throws PersistenceException {
-    throw new PersistenceException("Corpus "+this.getName()+
-            " cannot be saved to a datastore");
+    // TODO: this oddly now gets invoked when trying to save a pipeline, so
+    // instead of throwing an exception we just do nothing for now
+    //throw new PersistenceException("Corpus "+this.getName()+
+    //        " cannot be saved to a datastore");
+    System.err.println("Invoked setDataStore(ds)");
   }
 
   /**

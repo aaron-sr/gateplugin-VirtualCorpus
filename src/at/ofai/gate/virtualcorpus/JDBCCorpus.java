@@ -286,12 +286,19 @@ public class JDBCCorpus
         getTableName()+" WHERE "+getDocumentNameField()+" = ?";
       System.out.println("Preparing get document statement: "+query);
       getContentStatement = dbConnection.prepareStatement(query);
-      String outfield = getDocumentContentField();
-
     } catch (SQLException ex) {
       throw new ResourceInstantiationException("Could not prepare statement",ex);
     }
 
+    try {
+      String updstmt = "UPDATE "+getTableName()+
+              " SET "+getDocumentContentField()+" = ? "+
+              " WHERE "+getDocumentNameField()+" = ?";
+      System.out.println("Preparing update document statement: "+updstmt);
+      updateContentStatement = dbConnection.prepareStatement(updstmt);
+    } catch (SQLException ex) {
+      throw new ResourceInstantiationException("Could not prepare statement",ex);
+    }
 
     return this;
   }
@@ -375,6 +382,7 @@ public class JDBCCorpus
    * If the document is already adopted by some data store throw an exception.
    */
   public boolean add(Document doc) {
+    System.err.println("CALLED add(Document) for document "+doc.getName()+" NOT IMPLEMENTED");
     /* TEMPORARY
     if(!saveDocuments) {
       return false;
@@ -419,6 +427,7 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
    * a GateRuntimeException.
    */
   public void clear() {
+    System.err.println("Called clear(), not implemented, does nothing");
     /** TEMPORARY
     if(!saveDocuments) {
       return;
@@ -610,9 +619,10 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
   //**************************
   // helper methods
   // ************************
+  // TODO: this should allow saving to a different field? 
   @Override
   protected void saveDocument(Document doc) {
-    if(!getReadonly()) {
+    if(getReadonly()) {
       return;
     }
     String docContent = doc.toXml();

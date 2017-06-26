@@ -69,7 +69,7 @@ public class DummyDataStore4JDBCCorp
   public void sync(LanguageResource lr) throws PersistenceException {
     if(lr instanceof Document && ourCorpus.isDocumentLoaded((Document)lr)) {
       try {
-        //System.err.println("Syncing document: "+lr.getName());
+        System.err.println("Syncing document: "+lr.getName());
         ourCorpus.saveDocument((Document)lr);
       } catch (Exception ex) {
         throw new GateRuntimeException("Problem saving document "+lr.getName(),ex);
