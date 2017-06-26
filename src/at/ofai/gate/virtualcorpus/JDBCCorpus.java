@@ -468,14 +468,14 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
           " of size "+documentNames.size());
     }
     String docName = documentNames.get(index);
-    System.err.println("Trying to get docname "+docName+" for index "+index);
+    //System.err.println("Trying to get docname "+docName+" for index "+index);
     if(isDocumentLoaded(index)) {
-      System.err.println("Document is already loaded, returning");
+      //System.err.println("Document is already loaded, returning");
       Document doc = loadedDocuments.get(docName);
       //System.out.println("Returning loaded document "+doc);
       return doc;
     }
-    System.err.println("Document is not loaded, trying to read");
+    //System.err.println("Document is not loaded, trying to read");
     //System.out.println("Document not loaded, reading");
     Document doc;
     try {
@@ -483,7 +483,7 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
     } catch (Exception ex) {
       throw new GateRuntimeException("Problem retrieving document data for "+docName,ex);
     }
-    System.err.println("did readDocument without exception, should have a document: "+(doc==null ? "NULL" : doc.getName()));
+    //System.err.println("did readDocument without exception, should have a document: "+(doc==null ? "NULL" : doc.getName()));
     loadedDocuments.put(docName, doc);
     isLoadeds.set(index, true);
     adoptDocument(doc);
@@ -697,7 +697,7 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
     ResultSet rs = null;
     String docEncoding = encoding;
     
-    System.out.println("Trying to get content for "+docName);
+    //System.out.println("Trying to get content for "+docName);
     getContentStatement.setString(1, docName);
     //System.out.println("After setString: "+getContentStatement);
     rs = getContentStatement.executeQuery();
@@ -745,7 +745,7 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
   
   protected void adoptDocument(Document doc) {
     try {
-      System.err.println("Trying to adopt document: "+(doc==null ? "NULL" : doc.getName()));
+      //System.err.println("Trying to adopt document: "+(doc==null ? "NULL" : doc.getName()));
       doc.setDataStore(ourDS);
       //System.err.println("Adopted document "+doc.getName());
     } catch (PersistenceException ex) {
