@@ -28,20 +28,15 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
-import java.util.ListIterator;
 import java.util.Iterator;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Properties;
 
 import gate.*;
-import gate.corpora.CorpusImpl;
 import gate.corpora.DocumentImpl;
 import gate.creole.*;
 import gate.creole.metadata.*;
-import gate.event.CorpusEvent;
 import gate.event.CorpusListener;
-import gate.event.CreoleEvent;
 import gate.event.CreoleListener;
 import gate.persist.PersistenceException;
 import gate.util.*;
@@ -49,7 +44,6 @@ import gate.util.persistence.PersistenceManager;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -57,9 +51,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.regex.Pattern;
-import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 /** 
@@ -467,11 +459,14 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
           " of size "+documentNames.size());
     }
     String docName = documentNames.get(index);
+    System.err.println("Trying to get docname "+docName+" for index "+index);
     if(isDocumentLoaded(index)) {
+      System.err.println("Document is already loaded, returning");
       Document doc = loadedDocuments.get(docName);
       //System.out.println("Returning loaded document "+doc);
       return doc;
     }
+    System.err.println("Document is not loaded, trying to read");
     //System.out.println("Document not loaded, reading");
     Document doc;
     try {
@@ -479,9 +474,10 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
     } catch (Exception ex) {
       throw new GateRuntimeException("Problem retrieving document data for "+docName,ex);
     }
+    System.err.println("did readDocument without exception, should have a document: "+(doc==null ? "NULL" : doc.getName()));
     loadedDocuments.put(docName, doc);
     isLoadeds.set(index, true);
-      adoptDocument(doc);
+    adoptDocument(doc);
     return doc;
   }
 
@@ -616,25 +612,22 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
   // ************************
   @Override
   protected void saveDocument(Document doc) {
-    /* TEMPORARY
-    if(!getSaveDocuments()) {
+    if(!getReadonly()) {
       return;
     }
     String docContent = doc.toXml();
     String docName = doc.getName();
-    updateContentStatement.setString(2, docName);
-    if (getUseCompression() || getCompressOnCopy()) {
-      String docEncoding = (String) doc.getParameterValue("encoding");
-      String usedEncoding = getActiveEncoding(docEncoding);
-      InputStream iscomp = getGZIPCompressedInputStream(docContent, usedEncoding);
-      updateContentStatement.setBinaryStream(1, iscomp);
-      updateContentStatement.execute();
-      iscomp.close();
-    } else {
+    try {
+      updateContentStatement.setString(2, docName);
       updateContentStatement.setString(1, docContent);
       updateContentStatement.execute();
+    } catch (Exception ex) {
+      throw new GateRuntimeException("Error when trying to update database row for document doc.getName()",ex);
     }
-    */
+  }
+
+  protected void insertDocument(Document doc) throws SQLException, ResourceInstantiationException, IOException {
+    throw new GateRuntimeException("Adding new documents not supported");
   }
   /*
   protected void insertDocument(Document doc) throws SQLException, ResourceInstantiationException, IOException {
@@ -692,21 +685,9 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
     Document doc = null;
 
     ResultSet rs = null;
-    /* TEMPORARY
     String docEncoding = encoding;
-    if (haveEncodingField) {
-      getEncodingStatement.setString(1, docName);
-      rs = getEncodingStatement.executeQuery();
-      if(!rs.first()) {
-        throw new GateRuntimeException("Could not retrieve encoding for "+docName);
-      }
-      if(!rs.last()) {
-        throw new GateRuntimeException("More than one match for document "+docName);
-      }
-      docEncoding = rs.getString(1);
-    }
     
-    //System.out.println("Trying to get content for "+docName);
+    System.out.println("Trying to get content for "+docName);
     getContentStatement.setString(1, docName);
     //System.out.println("After setString: "+getContentStatement);
     rs = getContentStatement.executeQuery();
@@ -719,24 +700,8 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
 
 
     String content = null;
-    if (getUseCompression()) {
-      InputStream is = rs.getBinaryStream(1);
-      InputStream isdec = null;
-      isdec = new GZIPInputStream(is);
-      String usedEncoding = getActiveEncoding(docEncoding);
-      content = IOUtils.toString(isdec, usedEncoding);
-      isdec.close();
-      is.close();
-    } else {
-      content = rs.getString(1);
-    }
+    content = rs.getString(1);
     String docMimeType = mimeType;
-    if (haveMimeTypeField) {
-      getMimeTypeStatement.setString(1, docName);
-      rs = getMimeTypeStatement.executeQuery();
-      rs.first();
-      mimeType = rs.getString(1);
-    }
     FeatureMap params = Factory.newFeatureMap();
     params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
     params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, docEncoding);
@@ -748,11 +713,12 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
     } catch (Exception ex) {
       throw new GateRuntimeException("Exception creating the document", ex);
     }
-    */
     return doc;
   }
   
-  
+  protected void removeDocument(String docName) {
+    throw new GateRuntimeException("Removing a document from JDBC corpus not supported");
+  }
   /*
   protected void removeDocument(String docName) {
     
@@ -769,6 +735,7 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
   
   protected void adoptDocument(Document doc) {
     try {
+      System.err.println("Trying to adopt document: "+(doc==null ? "NULL" : doc.getName()));
       doc.setDataStore(ourDS);
       //System.err.println("Adopted document "+doc.getName());
     } catch (PersistenceException ex) {
