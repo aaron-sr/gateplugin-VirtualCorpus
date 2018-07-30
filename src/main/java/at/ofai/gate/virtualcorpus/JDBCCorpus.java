@@ -21,38 +21,47 @@
 
 package at.ofai.gate.virtualcorpus;
 
-import java.io.FileFilter;
-import java.io.IOException;
-import java.net.URL;
-import java.sql.SQLException;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.Iterator;
-import java.util.Collection;
-import java.util.HashMap;
-
-import gate.*;
-import gate.corpora.DocumentImpl;
-import gate.creole.*;
-import gate.creole.metadata.*;
-import gate.event.CorpusListener;
-import gate.event.CreoleListener;
-import gate.persist.PersistenceException;
-import gate.util.*;
-import gate.util.persistence.PersistenceManager;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileFilter;
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
+
 import org.apache.log4j.Logger;
+
+import gate.Corpus;
+import gate.Document;
+import gate.Factory;
+import gate.FeatureMap;
+import gate.Gate;
+import gate.Resource;
+import gate.corpora.DocumentImpl;
+import gate.creole.ResourceInstantiationException;
+import gate.creole.metadata.CreoleParameter;
+import gate.creole.metadata.CreoleResource;
+import gate.creole.metadata.Optional;
+import gate.event.CorpusListener;
+import gate.event.CreoleListener;
+import gate.persist.PersistenceException;
+import gate.util.GateRuntimeException;
+import gate.util.MethodNotImplementedException;
+import gate.util.persistence.PersistenceManager;
 
 /** 
  * A Corpus LR that mirrors documents stored in a JDBC database table field.
@@ -312,7 +321,8 @@ public class JDBCCorpus
    * @param encoding
    * @param recurseDirectories
    */
-  public void populate(
+  @Override
+public void populate(
       URL directory, FileFilter filter, 
       String encoding, boolean recurseDirectories) {
       populate(directory, filter, encoding, null, recurseDirectories);
@@ -328,7 +338,8 @@ public class JDBCCorpus
    * @param mimeType
    * @param recurseDirectories
    */
-  public void populate (
+  @Override
+public void populate (
       URL directory, FileFilter filter, 
       String encoding, String mimeType, 
       boolean recurseDirectories) {
@@ -381,7 +392,8 @@ public class JDBCCorpus
    * GateRuntimeException is thrown.
    * If the document is already adopted by some data store throw an exception.
    */
-  public boolean add(Document doc) {
+  @Override
+public boolean add(Document doc) {
     System.err.println("CALLED add(Document) for document "+doc.getName()+" NOT IMPLEMENTED");
     /* TEMPORARY
     if(!saveDocuments) {
@@ -426,7 +438,8 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
    * If the outDirectoryURL parameter was set, this method will throw
    * a GateRuntimeException.
    */
-  public void clear() {
+  @Override
+public void clear() {
     System.err.println("Called clear(), not implemented, does nothing");
     /** TEMPORARY
     if(!saveDocuments) {
@@ -443,7 +456,8 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
    * passed is already in the corpus. The content is not considered 
    * for this.
    */
-  public boolean contains(Object docObj) {
+  @Override
+public boolean contains(Object docObj) {
     Document doc = (Document)docObj;
     String docName = doc.getName();
     return (documentIndexes.get(docName) != null);
@@ -460,7 +474,8 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
    * @param index
    * @return 
    */
-  public Document get(int index) {
+  @Override
+public Document get(int index) {
     //System.out.println("DirCorp: called get(index): "+index);
     if(index < 0 || index >= documentNames.size()) {
       throw new IndexOutOfBoundsException(
@@ -497,7 +512,8 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
    * @param docObj
    * @return
    */
-  public int indexOf(Object docObj) {
+  @Override
+public int indexOf(Object docObj) {
     Document doc = (Document)docObj;
     String docName = doc.getName();
     Integer index = documentIndexes.get(docName);
@@ -612,7 +628,8 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
   }
   */
 
-  public int size() {
+  @Override
+public int size() {
     return documentNames.size();
   }
 
@@ -704,13 +721,14 @@ his, doc, i, CorpusEvent.DOCUMENT_ADDED));
     if (!rs.next()) {
       throw new GateRuntimeException("Document not found int the DB table: " + docName);
     }
-    if (!rs.isLast()) {
+    
+    String content = rs.getString(1);
+    
+    if (rs.next()) {
       throw new GateRuntimeException("More than one row found for document name " + docName);
     }
 
 
-    String content = null;
-    content = rs.getString(1);
     String docMimeType = mimeType;
     FeatureMap params = Factory.newFeatureMap();
     params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
