@@ -44,10 +44,6 @@ import gate.util.GateRuntimeException;
 import gate.util.MethodNotImplementedException;
 import gate.util.persistence.PersistenceManager;
 
-/**
- * 
- * @author Johann Petrak
- */
 public abstract class VirtualCorpus extends AbstractLanguageResource implements Corpus {
 	private static final long serialVersionUID = -7769699900341757030L;
 	private static Logger logger = Logger.getLogger(VirtualCorpus.class);
@@ -60,14 +56,6 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 	}
 
-	/**
-	 * Setter for the <code>readonly</code> LR initialization parameter.
-	 *
-	 * @param readonly
-	 *            If set to true, documents will never be saved back. All methods
-	 *            which would otherwise cause a document to get saved are silently
-	 *            ignored.
-	 */
 	@Optional
 	@CreoleParameter(comment = "If true, documents will never be saved", defaultValue = "false")
 	public void setReadonly(Boolean readonly) {
@@ -81,8 +69,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	protected Boolean readonly = true;
 
 	@Override
-	public void populate( // OK
-			URL directory, FileFilter filter, String encoding, boolean recurseDirectories) {
+	public void populate(URL directory, FileFilter filter, String encoding, boolean recurseDirectories) {
 		throw new gate.util.MethodNotImplementedException(notImplementedMessage("populate(URL, FileFilter, boolean)"));
 	}
 
@@ -94,8 +81,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public void populate( // OK
-			URL directory, FileFilter filter, String encoding, String mimeType, boolean recurseDirectories) {
+	public void populate(URL directory, FileFilter filter, String encoding, String mimeType,
+			boolean recurseDirectories) {
 		throw new gate.util.MethodNotImplementedException(
 				notImplementedMessage("populate(URL, FileFilter, String, String, boolean"));
 	}
@@ -140,15 +127,6 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		return isDocumentLoaded(documentNames.indexOf(docName));
 	}
 
-	/**
-	 * Unload a document from the corpus. This mimics what SerialCorpusImpl does:
-	 * the document gets synced which in turn will save the document, then it gets
-	 * removed from memory. Syncing will make our dummy datastore to invoke our own
-	 * saveDocument method. The saveDocument method determines if the document
-	 * should really be saved and how.
-	 *
-	 * @param doc
-	 */
 	@Override
 	public void unloadDocument(Document doc) {
 		String docName = doc.getName();
@@ -174,27 +152,11 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		return newList;
 	}
 
-	/**
-	 * Return the name of the document with the given index from the corpus.
-	 *
-	 * @param i
-	 *            the index of the document to return
-	 * @return the name of the document with the given index
-	 */
 	@Override
 	public String getDocumentName(int i) {
 		return documentNames.get(i);
 	}
 
-	/**
-	 * Return the document for the given index in the corpus. An
-	 * IndexOutOfBoundsException is thrown when the index is not contained in the
-	 * corpus. The document will be read from the file only if it is not already
-	 * loaded. If it is already loaded a reference to that document is returned.
-	 * 
-	 * @param index
-	 * @return
-	 */
 	@Override
 	public final Document get(int index) {
 		if (index < 0 || index >= documentNames.size()) {

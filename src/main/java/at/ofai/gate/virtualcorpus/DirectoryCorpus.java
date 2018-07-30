@@ -69,19 +69,6 @@ import gate.util.GateRuntimeException;
  * makes it much easier to share working pipelines between pipeline developers,
  * especially when the pipeline files are checked into SCS.
  * <p>
- * This LR does not implement the following methods:
- * <ul>
- * <li>toArray: none of the toArray methods is implemented.
- * </ul>
- * If the parameter "transientCorpus" is false, this corpus LR automatically
- * uses a "dummy datastore" internally. This datastore is created and removed
- * automatically when the corpus LR is created and removed. This datastore
- * cannot be used for anything useful, it does not allow listing of resources or
- * storing of anything but documents that are already in the corpus. It is
- * mainly here because GATE assumes that documents are either transient or from
- * a datastore. To avoid documents from a DirectoryCorpus to get treated as
- * transient documents, their DataStore is set to this dummy DataStore.
- * <p>
  * Documents will always get saved to either the original file or to a file in
  * the outDocumentURL directory whenever the document is synced or unloaded.
  * <p>
@@ -92,54 +79,25 @@ import gate.util.GateRuntimeException;
  * XML" function will still also re-save the documents in the corpus directory
  * unless the <code>saveDocuments</code> option is set to false.
  * 
- * @author Johann Petrak
  */
-@CreoleResource(name = "DirectoryCorpus", interfaceName = "gate.Corpus", icon = "corpus", helpURL = "http://code.google.com/p/gateplugin-virtualcorpus/wiki/DirectoryCorpusUsage", comment = "A corpus backed by GATE documents in a directory or directory tree")
+@CreoleResource(name = "DirectoryCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by GATE documents in a directory or directory tree")
 public class DirectoryCorpus extends VirtualCorpus {
 	private static final long serialVersionUID = -8485161260415382902L;
 	private static final Logger logger = Logger.getLogger(DirectoryCorpus.class);
 
 	protected File backingDirectoryFile;
 
-	/**
-	 * Setter for the <code>directoryURL</code> LR initialization parameter.
-	 * 
-	 * @param dirURL
-	 *            The URL of the directory where the files for the corpus will be
-	 *            read from. If the <code>outDirectoryURL</code> is left empty the
-	 *            documents will be written back to the original files in this
-	 *            directory when unloaded (except when <code>saveDocuments</code> is
-	 *            set to false).
-	 */
 	@CreoleParameter(comment = "The directory URL where files will be read from")
 	public void setDirectoryURL(URL dirURL) {
 		this.directoryURL = dirURL;
 	}
 
-	/**
-	 * Getter for the <code>directoryURL</code> LR initialization parameter.
-	 *
-	 * @return The directory URL where files are read from and (and saved to if
-	 *         unloaded when outDirectoryURL is not specified and saveDocuments is
-	 *         true).
-	 */
 	public URL getDirectoryURL() {
 		return this.directoryURL;
 	}
 
 	protected URL directoryURL = null;
 
-	/**
-	 * File extensions to use for loading document. If this is not empty, then only
-	 * files with that extension will be visible in the corpus. If it is left empty,
-	 * the file extensions supported by the currently loaded document formats will
-	 * be visible. Note that in both cases, any extension which does not have a
-	 * document exporter which supports that extension is ignored. The PR will check
-	 * for each extension at init time, for which of those there is a registered
-	 * document exporter for saving and will only use that exporter for any saving.
-	 * 
-	 * @param extensions
-	 */
 	@Optional
 	@CreoleParameter(comment = "A list of file extensions which will be loaded into the corpus. If not specified, all supported file extensions. ")
 	public void setExtensions(List<String> extensions) {
@@ -153,7 +111,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 	protected List<String> extensions;
 
 	@Optional
-	@CreoleParameter(comment = "Recursively get files from the directory (default: false)", defaultValue = "false")
+	@CreoleParameter(comment = "Recursively get files from the directory", defaultValue = "false")
 	public void setRecurseDirectory(Boolean value) {
 		this.recurseDirectory = value;
 	}
@@ -262,8 +220,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 			// full path name for both the directory and the file and then
 			// relativizing the path.
 			String filename = file.getName();
-			// TODO: first check if this file should be ignored (hidden files?)
-			if (!filename.startsWith(".")) {
+			if (!file.isHidden()) {
 				if (getRecurseDirectory()) {
 					try {
 						file = file.getCanonicalFile();
@@ -280,8 +237,6 @@ public class DirectoryCorpus extends VirtualCorpus {
 	}
 
 	protected void saveDocument(Document doc) {
-		// System.out.println("DirCorp: save doc "+doc.getName());
-		// If the corpus is read-only, nothing gets saved
 		if (getReadonly()) {
 			return;
 		}
@@ -312,10 +267,8 @@ public class DirectoryCorpus extends VirtualCorpus {
 
 	@Override
 	protected Document readDocument(String docName) {
-		// System.out.println("DirCorp: read doc "+docName);
 		File docFile = new File(backingDirectoryFile, docName);
 		URL docURL;
-		Document doc = null;
 		try {
 			docURL = docFile.toURI().toURL();
 		} catch (MalformedURLException ex) {
@@ -324,11 +277,10 @@ public class DirectoryCorpus extends VirtualCorpus {
 		FeatureMap params = Factory.newFeatureMap();
 		params.put(Document.DOCUMENT_URL_PARAMETER_NAME, docURL);
 		try {
-			doc = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, docName);
+			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, docName);
 		} catch (ResourceInstantiationException ex) {
 			throw new GateRuntimeException("Could not create Document from file " + docFile, ex);
 		}
-		return doc;
 	}
 
 }

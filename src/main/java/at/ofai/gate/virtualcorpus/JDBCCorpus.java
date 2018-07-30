@@ -62,20 +62,9 @@ import gate.util.GateRuntimeException;
  * <p>
  * NOTE: this corpus is immutable, none of the methods to add or remove
  * documents is supported!
- * <p>
- * This corpus LR automatically uses a "dummy datastore" internally. This
- * datastore is created and removed automatically when the corpus LR is created
- * and removed. This datastore cannot be used for anything useful, it does not
- * allow listing of resources or storing of anything but documents that are
- * already in the corpus. It is mainly here because GATE assumes that documents
- * are either transient or from a datastore. To avoid documents from a
- * JDBCCorpus to get treated as transient documents, their DataStore is set to
- * this dummy DataStore.
- * 
- * @author Johann Petrak
  */
 
-@CreoleResource(name = "JDBCCorpus", interfaceName = "gate.Corpus", icon = "corpus", helpURL = "http://code.google.com/p/gateplugin-virtualcorpus/wiki/JDBCCorpusUsage", comment = "A corpus backed by GATE documents stored in a JDBC table")
+@CreoleResource(name = "JDBCCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by GATE documents stored in a JDBC table")
 public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private static final long serialVersionUID = -8485133333415382902L;
 	private static Logger logger = Logger.getLogger(JDBCCorpus.class);
@@ -209,9 +198,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	String encoding = "utf-8";
 
 	@Override
-	/**
-	 * Initializes the JDBCCorpus LR
-	 */
 	public Resource init() throws ResourceInstantiationException {
 		if (getTableName() == null || getTableName().equals("")) {
 			throw new ResourceInstantiationException("tableName must not be empty");
@@ -225,7 +211,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		if (getSelectSQL() == null || getSelectSQL().equals("")) {
 			throw new ResourceInstantiationException("selectSQL must not be empty");
 		}
-		String query = getSelectSQL(); // this contains the ${tableName} and ${documentNameField} vars
+		String query = getSelectSQL();
 		query = query.replaceAll(Pattern.quote("${tableName}"), getTableName());
 		query = query.replaceAll(Pattern.quote("${documentNameField}"), getDocumentNameField());
 		String expandedUrl = "";
@@ -313,15 +299,12 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 
 	@Override
 	protected Document readDocument(String docName) {
-		Document doc = null;
 		try {
 
 			ResultSet rs = null;
 			String docEncoding = encoding;
 
-			// System.out.println("Trying to get content for "+docName);
 			getContentStatement.setString(1, docName);
-			// System.out.println("After setString: "+getContentStatement);
 			rs = getContentStatement.executeQuery();
 			if (!rs.next()) {
 				throw new GateRuntimeException("Document not found int the DB table: " + docName);
@@ -338,11 +321,10 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 			params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
 			params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, docEncoding);
 			params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, docMimeType);
-			doc = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, docName);
+			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, docName);
 		} catch (Exception ex) {
 			throw new GateRuntimeException("Exception creating the document", ex);
 		}
-		return doc;
 	}
 
 }

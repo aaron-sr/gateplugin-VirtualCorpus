@@ -26,24 +26,17 @@ import gate.persist.PersistenceException;
 import gate.util.persistence.LRPersistence;
 
 /**
- * Persistence for the JDBCCorpus LR. The standard Corpus Persistence won't do
- * as it either expects a persistent corpus in which case it must have a
- * Datastore, or a transient corpus in which case all the documents are
- * serialized too. We do not want either and just serialize the initialization
- * parameters so the LR will be recreated in an identical way when loaded.
+ * {@link gate.util.persistence.CorpusPersistence} is not suitable since it
+ * stores the complete docList
  * 
- * @author Johann Petrak
+ * {@link VirtualCorpus} just need initParams, which are stored by
+ * {@link gate.util.persistence.ResourcePersistence}
  */
 public class VirtualCorpusPersistence extends LRPersistence {
 	public static final long serialVersionUID = 2L;
 
 	protected Serializable featureMap;
 
-	/**
-	 * CorpusPersistence is not suitable since it stores the complete docList
-	 * 
-	 * VirtualCorpus just need initParams, which are stored by ResourcePersistence
-	 */
 	@Override
 	public void extractDataFromSource(Object source) throws PersistenceException {
 		if (!(source instanceof VirtualCorpus)) {
