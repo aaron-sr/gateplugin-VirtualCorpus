@@ -48,9 +48,7 @@ import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
 import gate.event.CorpusListener;
-import gate.persist.PersistenceException;
 import gate.util.GateRuntimeException;
-import gate.util.persistence.PersistenceManager;
 
 /**
  * A Corpus LR that mirrors documents stored in a JDBC database table field.
@@ -265,12 +263,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 			initDocuments(documentNames);
 		} catch (SQLException ex) {
 			throw new ResourceInstantiationException("Problem accessing database", ex);
-		}
-		try {
-			PersistenceManager.registerPersistentEquivalent(at.ofai.gate.virtualcorpus.JDBCCorpus.class,
-					at.ofai.gate.virtualcorpus.JDBCCorpusPersistence.class);
-		} catch (PersistenceException e) {
-			throw new ResourceInstantiationException("Could not register persistence", e);
 		}
 		// create all the prepared statements we need for accessing stuff in the db
 		try {

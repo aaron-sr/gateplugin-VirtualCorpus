@@ -48,11 +48,9 @@ import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
-import gate.persist.PersistenceException;
 import gate.util.Files;
 import gate.util.GateException;
 import gate.util.GateRuntimeException;
-import gate.util.persistence.PersistenceManager;
 
 /**
  * A Corpus LR that mirrors files in a directory. In the default configuration,
@@ -278,18 +276,8 @@ public class DirectoryCorpus extends VirtualCorpus {
 			}
 		}
 		initDocuments(documentNames);
-		try {
-			PersistenceManager.registerPersistentEquivalent(at.ofai.gate.virtualcorpus.DirectoryCorpus.class,
-					at.ofai.gate.virtualcorpus.DirectoryCorpusPersistence.class);
-		} catch (PersistenceException e) {
-			throw new ResourceInstantiationException("Could not register persistence", e);
-		}
 		return this;
 	}
-
-	// **************************
-	// helper methods
-	// ************************
 
 	protected void saveDocument(Document doc) {
 		// System.out.println("DirCorp: save doc "+doc.getName());
@@ -342,11 +330,5 @@ public class DirectoryCorpus extends VirtualCorpus {
 		}
 		return doc;
 	}
-
-	// NOTE: not used at the moment, our corpus is always immutable so far!
-	/*
-	 * protected void removeDocument(String docName) { File docFile = new
-	 * File(backingDirectoryFile, docName); docFile.delete(); }
-	 */
 
 }

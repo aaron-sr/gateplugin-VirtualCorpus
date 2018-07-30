@@ -39,8 +39,10 @@ import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.Optional;
 import gate.event.CorpusEvent;
 import gate.event.CorpusListener;
+import gate.persist.PersistenceException;
 import gate.util.GateRuntimeException;
 import gate.util.MethodNotImplementedException;
+import gate.util.persistence.PersistenceManager;
 
 /**
  * 
@@ -49,6 +51,14 @@ import gate.util.MethodNotImplementedException;
 public abstract class VirtualCorpus extends AbstractLanguageResource implements Corpus {
 	private static final long serialVersionUID = -7769699900341757030L;
 	private static Logger logger = Logger.getLogger(VirtualCorpus.class);
+
+	static {
+		try {
+			PersistenceManager.registerPersistentEquivalent(VirtualCorpus.class, VirtualCorpusPersistence.class);
+		} catch (PersistenceException e) {
+			e.printStackTrace();
+		}
+	}
 
 	/**
 	 * Setter for the <code>readonly</code> LR initialization parameter.
