@@ -70,687 +70,600 @@ import org.apache.log4j.Logger;
 // We could merge in the code from convertFormat to seperate out the 
 // format conversion functionality!
 
-
-
-/** 
+/**
  * A Corpus LR that mirrors files in a directory. In the default configuration,
- * just the <code>directoryURL</code> parameter is specified at creation and
- * all files that have a file extension of ".xml" and are not hidden are
- * accessible as documents through that corpus and automatically written back
- * to the directory when sync'ed or when unloaded (which does an implicit sync).
- * If the parameter <code>outDirectoryURL</code>
- * is also specified, the corpus reflects all the files from the 
- * <code>directoryURL</code> directory but writes any changed documents into
- * the directory <code>outDirectoryURL</code>. If the parameter 
- * <code>saveDocuments</code> is set to false, nothing is ever written
+ * just the <code>directoryURL</code> parameter is specified at creation and all
+ * files that have a file extension of ".xml" and are not hidden are accessible
+ * as documents through that corpus and automatically written back to the
+ * directory when sync'ed or when unloaded (which does an implicit sync). If the
+ * parameter <code>outDirectoryURL</code> is also specified, the corpus reflects
+ * all the files from the <code>directoryURL</code> directory but writes any
+ * changed documents into the directory <code>outDirectoryURL</code>. If the
+ * parameter <code>saveDocuments</code> is set to false, nothing is ever written
  * to either of the directories.
  * <p>
- * The main purpose of this Corpus implementation is that through it
- * a serial controller
- * can directly read and write from files stored in a directory. 
- * This makes it much easier to share working pipelines between pipeline
- * developers, especially when the pipeline files are checked into SCS.
+ * The main purpose of this Corpus implementation is that through it a serial
+ * controller can directly read and write from files stored in a directory. This
+ * makes it much easier to share working pipelines between pipeline developers,
+ * especially when the pipeline files are checked into SCS.
  * <p>
- * This LR does not implement the following methods: 
+ * This LR does not implement the following methods:
  * <ul>
- * <li>toArray: none of the toArray methods is implemented. 
+ * <li>toArray: none of the toArray methods is implemented.
  * </ul>
- * If the parameter "transientCorpus" is false,
- * this corpus LR automatically uses a "dummy datastore" internally.
- * This datastore is created and removed automatically when the corpus LR is
- * created and removed. This datastore cannot be used for anything useful, it
- * does not allow listing of resources or storing of anything but documents
- * that are already in the corpus. It is mainly here because GATE assumes that
- * documents are either transient or from a datastore. To avoid documents from
- * a DirectoryCorpus to get treated as transient documents, their DataStore is
- * set to this dummy DataStore.
+ * If the parameter "transientCorpus" is false, this corpus LR automatically
+ * uses a "dummy datastore" internally. This datastore is created and removed
+ * automatically when the corpus LR is created and removed. This datastore
+ * cannot be used for anything useful, it does not allow listing of resources or
+ * storing of anything but documents that are already in the corpus. It is
+ * mainly here because GATE assumes that documents are either transient or from
+ * a datastore. To avoid documents from a DirectoryCorpus to get treated as
+ * transient documents, their DataStore is set to this dummy DataStore.
  * <p>
- * Documents will always get saved to either the original file or to a file
- * in the outDocumentURL directory whenever the document is synced or unloaded.
+ * Documents will always get saved to either the original file or to a file in
+ * the outDocumentURL directory whenever the document is synced or unloaded.
  * <p>
  * NOTE: If you use the "Save as XML" option from the LR's context menu, be
- * careful not specify the directory where the corpus saves documents as 
- * the target directory for the "Save as XML" function -- this might produce
- * unexpected results. Even if a different directory is specified, the 
- * "Save as XML" function will still also re-save the documents in the 
- * corpus directory unless the <code>saveDocuments</code> option is set to 
- * false.
+ * careful not specify the directory where the corpus saves documents as the
+ * target directory for the "Save as XML" function -- this might produce
+ * unexpected results. Even if a different directory is specified, the "Save as
+ * XML" function will still also re-save the documents in the corpus directory
+ * unless the <code>saveDocuments</code> option is set to false.
  * 
  * @author Johann Petrak
  */
-@CreoleResource(
-    name = "DirectoryCorpus",
-    interfaceName = "gate.Corpus", 
-    icon = "corpus", 
-    helpURL = "http://code.google.com/p/gateplugin-virtualcorpus/wiki/DirectoryCorpusUsage",
-    comment = "A corpus backed by GATE documents in a directory or directory tree")
-public class DirectoryCorpus  
-  extends VirtualCorpus
-  
-  {
+@CreoleResource(name = "DirectoryCorpus", interfaceName = "gate.Corpus", icon = "corpus", helpURL = "http://code.google.com/p/gateplugin-virtualcorpus/wiki/DirectoryCorpusUsage", comment = "A corpus backed by GATE documents in a directory or directory tree")
+public class DirectoryCorpus extends VirtualCorpus
 
-  //*****
-  // Fields
-  //******
-  
-  /**
-   * 
-   */
-  private static final long serialVersionUID = -8485161260415382902L;
+{
 
-  
-  protected File backingDirectoryFile;
-  
-  
-  //***************
-  // Parameters
-  //***************
-  
-  /**
-   * Setter for the <code>directoryURL</code> LR initialization parameter.
-   * @param dirURL The URL of the directory where the files for the corpus will
-   * be read
-   * from. If the <code>outDirectoryURL</code> is left empty the documents
-   * will be written back to the original files in this directory when
-   * unloaded (except when <code>saveDocuments</code> is set to false).
-   */
-  @CreoleParameter(comment = "The directory URL where files will be read from")
-  public void setDirectoryURL(URL dirURL) {
-    this.directoryURL = dirURL;
-  }
-  /**
-   * Getter for the <code>directoryURL</code> LR initialization parameter.
-   *
-   * @return The directory URL where files are read from and (and saved to
-   * if unloaded when outDirectoryURL is not specified and saveDocuments
-   * is true).
-   */
-  public URL getDirectoryURL() {
-    return this.directoryURL;
-  }
-  protected URL directoryURL = null;
+	// *****
+	// Fields
+	// ******
 
-  /**
-   * File extensions to use for loading document.
-   * If this is not empty, then only files with that extension will be visible
-   * in the corpus. If it is left empty, the file extensions supported by
-   * the currently loaded document formats will be visible. 
-   * Note that in both cases, any extension which does not have a document
-   * exporter which supports that extension is ignored. 
-   * The PR will check for each extension at init time, for which of those
-   * there is a registered document exporter for saving and will only use
-   * that exporter for any saving. 
-   * 
-   * @param extensions 
-   */
-  @Optional
-  @CreoleParameter(comment = "A list of file extensions which will be loaded into the corpus. If not specified, all supported file extensions. ")
-  public void setExtensions(List<String> extensions) {
-    this.extensions = extensions;
-  }
-  public List<String> getExtensions() { return extensions; }
-  protected List<String> extensions;
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = -8485161260415382902L;
 
-  @Optional
-  @CreoleParameter(comment = "Recursively get files from the directory (default: false)",defaultValue="false")
-  public void setRecurseDirectory(Boolean value) {
-    this.recurseDirectory = value;
-  }
-  public Boolean getRecurseDirectory() { return recurseDirectory; }
-  protected Boolean recurseDirectory;
-  
-  
-  Map<String,DocumentExporter> extension2Exporter = new HashMap<String,DocumentExporter>();
-  
-  private static final Logger logger = Logger.getLogger(DirectoryCorpus.class);
-  
-  /**
-   * Initializes the DirectoryCorpus LR
-   * @return 
-   * @throws ResourceInstantiationException
-   */
-  @Override
-  public Resource init() 
-    throws ResourceInstantiationException {
-    logger.info("DirectoryCorpus: calling init");
-    if(directoryURL == null) {
-      throw new ResourceInstantiationException("directoryURL must be set");
-    }
-    // first of all, create a map that contains all the supported extensions
-    // as keys and the corresponding documente exporter as value. 
-    
-    // First, get all the supported extensions for reading files
-    Set<String> readExtensions = DocumentFormat.getSupportedFileSuffixes();
-    logger.info("DirectoryCorpus/init readExtensions="+readExtensions);
-    Set<String> supportedExtensions = new HashSet<String>();
-    
-    // if we also want to write, we have to limit the supported extensions
-    // to those where we have an exporter and also we need to remember which
-    // exporter supports which extensions
-    if (!getReadonly()) {
-      List<Resource> des = null;
-      try {
-        // Now get all the Document exporters
-        des = Gate.getCreoleRegister().
-                getAllInstances("gate.DocumentExporter");
-      } catch (GateException ex) {
-        throw new ResourceInstantiationException("Could not get the document exporters", ex);
-      }
-      for (Resource r : des) {
-        DocumentExporter d = (DocumentExporter) r;
-        if (readExtensions.contains(d.getDefaultExtension())) {
-          extension2Exporter.put(d.getDefaultExtension(), d);
-          supportedExtensions.add(d.getDefaultExtension());
-        }
-      }
-    } else {
-      supportedExtensions.addAll(readExtensions);
-    }
-    logger.info("DirectoryCorpus/init supportedExtensions=" + readExtensions);
+	protected File backingDirectoryFile;
 
-    // now check if an extension list was specified by the user. If no, nothing
-    // needs to be done. If yes, remove all the extensions from the extnesion2Exporter
-    // map which were not specified and warn about all the extensions specified
-    // for which we do not have an entry. Also remove them from the supportedExtensions set
-    if(getExtensions() != null && !getExtensions().isEmpty()) {
-      logger.info("DirectoryCorpu/init getExtgension is not empty: "+getExtensions());
-      for(String ext : getExtensions()) {
-        if(!supportedExtensions.contains(ext)) {
-          logger.warn("DirectoryCorpus warning: extension is not supported: "+ext);
-        }
-      }
-      // now remove all the extensions which are not specified
-      Iterator<String> it = supportedExtensions.iterator();
-      while(it.hasNext()) {
-        String ext = it.next();
-        logger.info("DirectoryCorpus/init checking supported extension: "+ext);
-        if(!getExtensions().contains(ext)) {
-          logger.info("DirectoryCorpus/init removing extension: "+ext);
-          it.remove();
-          extension2Exporter.remove(ext);
-        }
-      }
-    }
-    logger.info("DirectoryCorpus/init supportedExtensions after parms: "+supportedExtensions);
-    logger.info("DirectoryCorpus/init exporter map: "+extension2Exporter);
+	// ***************
+	// Parameters
+	// ***************
 
-    if(supportedExtensions.isEmpty()) {
-      throw new ResourceInstantiationException("DirectoryCorpus could not be created, no file format supported or loaded");
-    }
-    
-    backingDirectoryFile = Files.fileFromURL(directoryURL);
-    try {
-      backingDirectoryFile = backingDirectoryFile.getCanonicalFile();
-    } catch (IOException ex) {
-      throw new ResourceInstantiationException(
-              "Cannot get canonical file for "+backingDirectoryFile,ex);
-    }
-    if(!backingDirectoryFile.isDirectory()) {
-      throw new ResourceInstantiationException(
-              "Not a directory "+backingDirectoryFile);
-    }
-    
-    try {
-        ourDS =
-          (DummyDataStore4DirCorp) Factory.createDataStore("at.ofai.gate.virtualcorpus.DummyDataStore4DirCorp", backingDirectoryFile.getAbsoluteFile().toURI().toURL().toString());
-        ourDS.setName("DummyDS4_" + this.getName());
-        ourDS.setComment("Dummy DataStore for DirectoryCorpus " + this.getName());
-        ourDS.setCorpus(this);
-        //System.err.println("Created dummy corpus: "+ourDS+" with name "+ourDS.getName());
-    } catch (Exception ex) {
-        throw new ResourceInstantiationException(
-          "Could not create dummy data store", ex);
-    }
-    logger.info("DirectoryCorpus/init: ds created: "+ourDS.getName());
+	/**
+	 * Setter for the <code>directoryURL</code> LR initialization parameter.
+	 * 
+	 * @param dirURL
+	 *            The URL of the directory where the files for the corpus will be
+	 *            read from. If the <code>outDirectoryURL</code> is left empty the
+	 *            documents will be written back to the original files in this
+	 *            directory when unloaded (except when <code>saveDocuments</code> is
+	 *            set to false).
+	 */
+	@CreoleParameter(comment = "The directory URL where files will be read from")
+	public void setDirectoryURL(URL dirURL) {
+		this.directoryURL = dirURL;
+	}
 
-    
-    
-    Iterator<File> fileIt = 
-            FileUtils.iterateFiles(backingDirectoryFile, 
-            supportedExtensions.toArray(new String[0]), getRecurseDirectory());
-    int i = 0;
-    while(fileIt.hasNext()) {
-      File file = fileIt.next();
-      // if recursion was specified, we need to get the relative file path
-      // relative to the root directory. This is done by getting the canonical
-      // full path name for both the directory and the file and then 
-      // relativizing the path.
-      String filename = file.getName();
-      // TODO: first check if this file should be ignored (hidden files?)
-      if(!filename.startsWith(".")) {
-        if(getRecurseDirectory()) {
-          try {
-            file = file.getCanonicalFile();
-          } catch (IOException ex) {
-            throw new ResourceInstantiationException("Could not get canonical path for "+file);
-          }
-          filename = backingDirectoryFile.toURI().relativize(file.toURI()).getPath();
-        }
-        documentNames.add(filename);
-        isLoadeds.add(false);
-        documentIndexes.put(filename, i);
-        i++;
-      }
-    }
-    if(i==0) {
-      logger.warn("DirectoryCorpus warning: empty immutable corpus created, no files found");
-    }
-    try {
-      PersistenceManager.registerPersistentEquivalent(
-          at.ofai.gate.virtualcorpus.DirectoryCorpus.class,
-          at.ofai.gate.virtualcorpus.DirectoryCorpusPersistence.class);
-    } catch (PersistenceException e) {
-      throw new ResourceInstantiationException(
-              "Could not register persistence",e);
-    }
-    Gate.getCreoleRegister().addCreoleListener(this);
-    return this;
-  }
-  
+	/**
+	 * Getter for the <code>directoryURL</code> LR initialization parameter.
+	 *
+	 * @return The directory URL where files are read from and (and saved to if
+	 *         unloaded when outDirectoryURL is not specified and saveDocuments is
+	 *         true).
+	 */
+	public URL getDirectoryURL() {
+		return this.directoryURL;
+	}
 
+	protected URL directoryURL = null;
 
-  @Override
-  public void cleanup() {
-    // TODO:
-    // deregister our listener for resources of type document
-    //
-    Gate.getDataStoreRegister().remove(ourDS);
-  }
+	/**
+	 * File extensions to use for loading document. If this is not empty, then only
+	 * files with that extension will be visible in the corpus. If it is left empty,
+	 * the file extensions supported by the currently loaded document formats will
+	 * be visible. Note that in both cases, any extension which does not have a
+	 * document exporter which supports that extension is ignored. The PR will check
+	 * for each extension at init time, for which of those there is a registered
+	 * document exporter for saving and will only use that exporter for any saving.
+	 * 
+	 * @param extensions
+	 */
+	@Optional
+	@CreoleParameter(comment = "A list of file extensions which will be loaded into the corpus. If not specified, all supported file extensions. ")
+	public void setExtensions(List<String> extensions) {
+		this.extensions = extensions;
+	}
 
+	public List<String> getExtensions() {
+		return extensions;
+	}
 
-  // Methods to be implemented from List
+	protected List<String> extensions;
 
-  /**
-   * Add a document to the corpus. If the document has a name that is already
-   * in the list of documents, return false and do not add the document.
-   * Note that only the name is checked!
-   * If the name of the document added is not ending in ".xml", a 
-   * GateRuntimeException is thrown.
-   * If the document is already adopted by some data store throw an exception.
-   * IMPORTANT: this is NOT IMPLEMENTED at the moment!
-   */
-  @Override
-  public boolean add(Document doc) {
-    throw new MethodNotImplementedException(notImplementedMessage("add(Document doc)"));
-  }
-  /*
-  public boolean add(Document doc) {
-    if(!saveDocuments) {
-      return false;
-    }
-    //System.out.println("DocCorp: called add(Object): "+doc.getName());
-    String docName = doc.getName();
-    ensureValidDocumentName(docName,true);
-    Integer index = documentIndexes.get(docName);
-    if(index != null) {
-      return false;  // if that name is already in the corpus, do not add
-    } else {
-      // for now, we do not allow any document to be added that is already
-      // adopted by a datastore.
-      if(doc.getDataStore() != null) {
-        throw new GateRuntimeException("Cannot add "+doc.getName()+" which belongs to datastore "+doc.getDataStore().getName());
-      }
-      saveDocument(doc);
-      int i = documentNames.size();
-      documentNames.add(docName);
-      documentIndexes.put(docName, i);
-      isLoadeds.add(false);
-      if(!isTransientCorpus) {
-        adoptDocument(doc);
-      }
-      fireDocumentAdded(new CorpusEvent(
-          this, doc, i, CorpusEvent.DOCUMENT_ADDED));
-      
-      return true;
-    }
-  }
-  */
+	@Optional
+	@CreoleParameter(comment = "Recursively get files from the directory (default: false)", defaultValue = "false")
+	public void setRecurseDirectory(Boolean value) {
+		this.recurseDirectory = value;
+	}
 
+	public Boolean getRecurseDirectory() {
+		return recurseDirectory;
+	}
 
-  /**
-   * This removes all documents from the corpus. Note that this does nothing
-   * when the saveDocuments parameter is set to false.
-   * If the outDirectoryURL parameter was set, this method will throw
-   * a GateRuntimeException.
-   * IMPORTANT: this is not implemented at the moment!!
-   */
-  @Override
-  public void clear() {
-    throw new MethodNotImplementedException(notImplementedMessage("clear()"));
-  }
-  /*
-  public void clear() {
-    if(!saveDocuments) {
-      return;
-    }
-    if(outDirectoryURL != null) {
-      throw new GateRuntimeException(
-              "clear method not supported when outDirectoryURL is set for "+
-              this.getName());
-    }
-    for(int i=documentNames.size()-1; i>=0; i--) {
-      remove(i);
-    }
-  }
-  */
-  
-  /**
-   * This checks if a document with the same name as the document
-   * passed is already in the corpus. 
-   * IMPORTANT: The content is not considered 
-   * for this, only the name is relevant!
-   */
-  @Override
-  public boolean contains(Object docObj) {
-    Document doc = (Document)docObj;
-    String docName = doc.getName();
-    return (documentIndexes.get(docName) != null);
-  }
-  
+	protected Boolean recurseDirectory;
 
-  /**
-   * Return the document for the given index in the corpus.
-   * An IndexOutOfBoundsException is thrown when the index is not contained
-   * in the corpus.
-   * The document will be read from the file only if it is not already loaded.
-   * If it is already loaded a reference to that document is returned.
-   * 
-   * @param index
-   * @return 
-   */
-  @Override
-  public Document get(int index) {
-    //System.out.println("DirCorp: called get(index): "+index);
-    if(index < 0 || index >= documentNames.size()) {
-      throw new IndexOutOfBoundsException(
-          "Index "+index+" not in corpus "+this.getName()+
-          " of size "+documentNames.size());
-    }
-    String docName = documentNames.get(index);
-    if(isDocumentLoaded(index)) {
-      Document doc = loadedDocuments.get(docName);
-      //System.out.println("Returning loaded document "+doc);
-      return doc;
-    }
-    //System.out.println("Document not loaded, reading");
-    Document doc = readDocument(docName);
-    loadedDocuments.put(docName, doc);
-    isLoadeds.set(index, true);
-    adoptDocument(doc);
-    return doc;
-  }
+	Map<String, DocumentExporter> extension2Exporter = new HashMap<String, DocumentExporter>();
 
-  /**
-   * Returns the index of the document with the same name as the given document
-   * in the corpus. The content of the document is not considered for this.
-   * 
-   * @param docObj
-   * @return
-   */
-  @Override
-  public int indexOf(Object docObj) {
-    Document doc = (Document)docObj;
-    String docName = doc.getName();
-    Integer index = documentIndexes.get(docName);
-    if(index == null) {
-      return -1;
-    } else {
-      return index;
-    }
-  }
+	private static final Logger logger = Logger.getLogger(DirectoryCorpus.class);
 
-  /**
-   * Returns an iterator to iterate through the documents of the
-   * corpus. The iterator does not allow modification of the corpus.
-   * 
-   * @return
-   */
-  @Override
-  public Iterator<Document> iterator() {
-    return new DirectoryCorpusIterator();
-  }
+	/**
+	 * Initializes the DirectoryCorpus LR
+	 * 
+	 * @return
+	 * @throws ResourceInstantiationException
+	 */
+	@Override
+	public Resource init() throws ResourceInstantiationException {
+		logger.info("DirectoryCorpus: calling init");
+		if (directoryURL == null) {
+			throw new ResourceInstantiationException("directoryURL must be set");
+		}
+		// first of all, create a map that contains all the supported extensions
+		// as keys and the corresponding documente exporter as value.
 
+		// First, get all the supported extensions for reading files
+		Set<String> readExtensions = DocumentFormat.getSupportedFileSuffixes();
+		logger.info("DirectoryCorpus/init readExtensions=" + readExtensions);
+		Set<String> supportedExtensions = new HashSet<String>();
 
-  /**
-   * Removes the document with the given index from the corpus. This is not
-   * supported and throws a GateRuntimeException if the outDirectoryURL
-   * was specified for this corpus. If the saveDocuments parameter is false
-   * for this corpus, this method does nothing.
-   * A document which is removed from the corpus will have its dummy
-   * datastore removed and look like a transient document again. 
-   * 
-   * IMPORTANT: this is NOT IMPLEMENTED yet!
-   * 
-   * @param index
-   * @return the document that was just removed from the corpus
-   */
-  @Override
-  public Document remove(int index) {
-    throw new MethodNotImplementedException(notImplementedMessage("remove(int index)"));
-  }
-  /*
-  public Document remove(int index) {
-    Document doc = (Document)get(index);
-    String docName = documentNames.get(index);
-    documentNames.remove(index);
-    if(isLoadeds.get(index)) {
-      loadedDocuments.remove(docName);
-    }
-    isLoadeds.remove(index);
-    documentIndexes.remove(docName);
-    removeDocument(docName);
-    if (!isTransientCorpus) {
-      try {
-        doc.setDataStore(null);
-      } catch (PersistenceException ex) {
-        // this should never happen
-      }
-    }
-    fireDocumentRemoved(new CorpusEvent(
-        this, doc,
-        index, CorpusEvent.DOCUMENT_REMOVED));
-    return doc;
-  }
-  */
+		// if we also want to write, we have to limit the supported extensions
+		// to those where we have an exporter and also we need to remember which
+		// exporter supports which extensions
+		if (!getReadonly()) {
+			List<Resource> des = null;
+			try {
+				// Now get all the Document exporters
+				des = Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter");
+			} catch (GateException ex) {
+				throw new ResourceInstantiationException("Could not get the document exporters", ex);
+			}
+			for (Resource r : des) {
+				DocumentExporter d = (DocumentExporter) r;
+				if (readExtensions.contains(d.getDefaultExtension())) {
+					extension2Exporter.put(d.getDefaultExtension(), d);
+					supportedExtensions.add(d.getDefaultExtension());
+				}
+			}
+		} else {
+			supportedExtensions.addAll(readExtensions);
+		}
+		logger.info("DirectoryCorpus/init supportedExtensions=" + readExtensions);
 
-  /**
-   * Removes a document with the same name as the given document
-   * from the corpus. This is not
-   * supported and throws a GateRuntimeException if the outDirectoryURL
-   * was specified for this corpus. If the saveDocuments parameter is false
-   * for this corpus, this method does nothing and always returns false.
-   * If the a document with the same name as the given document is not
-   * found int the corpus, this does nothing and returns false.
-   * 
-   * @param docObj
-   * @return true if a document was removed from the corpus
-   */
-  @Override
-  public boolean remove(Object docObj) {
-    throw new MethodNotImplementedException(notImplementedMessage("remove(Object docObj)"));
-  }
-  /*
-  public boolean remove(Object docObj) {
-    int index = indexOf(docObj);
-    if(index == -1) {
-      return false;
-    }
-    String docName = documentNames.get(index);
-    documentNames.remove(index);
-    isLoadeds.remove(index);
-    documentIndexes.remove(docName);
-    removeDocument(docName);  
-    Document doc = isDocumentLoaded(index) ? (Document)get(index) : null;
-    if (!isTransientCorpus) {
-      try {
-        doc.setDataStore(null);
-      } catch (PersistenceException ex) {
-        // this should never happen
-      }
-    }
-    fireDocumentRemoved(new CorpusEvent(
-        this, doc,
-        index, CorpusEvent.DOCUMENT_REMOVED));
-    return true;
-  }
-  */
+		// now check if an extension list was specified by the user. If no, nothing
+		// needs to be done. If yes, remove all the extensions from the
+		// extnesion2Exporter
+		// map which were not specified and warn about all the extensions specified
+		// for which we do not have an entry. Also remove them from the
+		// supportedExtensions set
+		if (getExtensions() != null && !getExtensions().isEmpty()) {
+			logger.info("DirectoryCorpu/init getExtgension is not empty: " + getExtensions());
+			for (String ext : getExtensions()) {
+				if (!supportedExtensions.contains(ext)) {
+					logger.warn("DirectoryCorpus warning: extension is not supported: " + ext);
+				}
+			}
+			// now remove all the extensions which are not specified
+			Iterator<String> it = supportedExtensions.iterator();
+			while (it.hasNext()) {
+				String ext = it.next();
+				logger.info("DirectoryCorpus/init checking supported extension: " + ext);
+				if (!getExtensions().contains(ext)) {
+					logger.info("DirectoryCorpus/init removing extension: " + ext);
+					it.remove();
+					extension2Exporter.remove(ext);
+				}
+			}
+		}
+		logger.info("DirectoryCorpus/init supportedExtensions after parms: " + supportedExtensions);
+		logger.info("DirectoryCorpus/init exporter map: " + extension2Exporter);
 
-  /**
-   * Remove all the documents in the collection from the corpus.
-   *
-   * @param coll
-   * @return true if any document was removed
-   */
-  @Override
-  public boolean removeAll(Collection coll) {
-    throw new MethodNotImplementedException(notImplementedMessage("removeAll(Collection coll)"));
-  }
-  /*
-  public boolean removeAll(Collection coll) {
-    boolean ret = false;
-    for(Object docObj : coll) {
-      ret = ret || remove(docObj);
-    }
-    return ret;
-  }
-  */
+		if (supportedExtensions.isEmpty()) {
+			throw new ResourceInstantiationException(
+					"DirectoryCorpus could not be created, no file format supported or loaded");
+		}
 
-  
-  /**
-   * This method is not implemented and always throws a
-   * MethodNotImplementedException.
-   * 
-   * @param index
-   * @param obj
-   * @return
-   */
-  @Override
-  public Document set(int index, Document obj) {
-    throw new gate.util.MethodNotImplementedException(
-            notImplementedMessage("set(int,Object)"));
-  }
-  
-  @Override
-  public int size() {
-    return documentNames.size();
-  }
+		backingDirectoryFile = Files.fileFromURL(directoryURL);
+		try {
+			backingDirectoryFile = backingDirectoryFile.getCanonicalFile();
+		} catch (IOException ex) {
+			throw new ResourceInstantiationException("Cannot get canonical file for " + backingDirectoryFile, ex);
+		}
+		if (!backingDirectoryFile.isDirectory()) {
+			throw new ResourceInstantiationException("Not a directory " + backingDirectoryFile);
+		}
 
-  /**
-   * This method is not implemented and always throws a
-   * MethodNotImplementedException.
-   *
-   * @param i1
-   * @param i2
-   * @return
-   */
-  @Override
-  public List<Document> subList(int i1, int i2) {
-    throw new gate.util.MethodNotImplementedException(
-            notImplementedMessage("subList(int,int)"));
-  }
+		try {
+			ourDS = (DummyDataStore4DirCorp) Factory.createDataStore(
+					"at.ofai.gate.virtualcorpus.DummyDataStore4DirCorp",
+					backingDirectoryFile.getAbsoluteFile().toURI().toURL().toString());
+			ourDS.setName("DummyDS4_" + this.getName());
+			ourDS.setComment("Dummy DataStore for DirectoryCorpus " + this.getName());
+			ourDS.setCorpus(this);
+			// System.err.println("Created dummy corpus: "+ourDS+" with name
+			// "+ourDS.getName());
+		} catch (Exception ex) {
+			throw new ResourceInstantiationException("Could not create dummy data store", ex);
+		}
+		logger.info("DirectoryCorpus/init: ds created: " + ourDS.getName());
 
+		Iterator<File> fileIt = FileUtils.iterateFiles(backingDirectoryFile, supportedExtensions.toArray(new String[0]),
+				getRecurseDirectory());
+		int i = 0;
+		while (fileIt.hasNext()) {
+			File file = fileIt.next();
+			// if recursion was specified, we need to get the relative file path
+			// relative to the root directory. This is done by getting the canonical
+			// full path name for both the directory and the file and then
+			// relativizing the path.
+			String filename = file.getName();
+			// TODO: first check if this file should be ignored (hidden files?)
+			if (!filename.startsWith(".")) {
+				if (getRecurseDirectory()) {
+					try {
+						file = file.getCanonicalFile();
+					} catch (IOException ex) {
+						throw new ResourceInstantiationException("Could not get canonical path for " + file);
+					}
+					filename = backingDirectoryFile.toURI().relativize(file.toURI()).getPath();
+				}
+				documentNames.add(filename);
+				isLoadeds.add(false);
+				documentIndexes.put(filename, i);
+				i++;
+			}
+		}
+		if (i == 0) {
+			logger.warn("DirectoryCorpus warning: empty immutable corpus created, no files found");
+		}
+		try {
+			PersistenceManager.registerPersistentEquivalent(at.ofai.gate.virtualcorpus.DirectoryCorpus.class,
+					at.ofai.gate.virtualcorpus.DirectoryCorpusPersistence.class);
+		} catch (PersistenceException e) {
+			throw new ResourceInstantiationException("Could not register persistence", e);
+		}
+		Gate.getCreoleRegister().addCreoleListener(this);
+		return this;
+	}
 
-  
+	@Override
+	public void cleanup() {
+		// TODO:
+		// deregister our listener for resources of type document
+		//
+		Gate.getDataStoreRegister().remove(ourDS);
+	}
 
-  //**************************
-  // helper methods
-  // ************************
-  
-  // This method should only get called by the datastore when a document
-  // is synced. This will happen automatically when a document is unloaded
-  // or when a document is deliberately synced via its datastore. 
-  @Override
-  protected void saveDocument(Document doc) {
-    //System.out.println("DirCorp: save doc "+doc.getName());
-    // If the corpus is read-only, nothing gets saved
-    if(getReadonly()) {
-      return;
-    }
-    String docName = doc.getName();
-    // get the extension and then look up the document exporter for that
-    // extension which will be used to do the actual saving.
-    int extDotPos = docName.lastIndexOf(".");
-    if(extDotPos <= 0) {
-      throw new GateRuntimeException("Did not find a file name extensions when trying to save document "+docName);
-    }
-    String ext = docName.substring(extDotPos+1);
-    if(ext.isEmpty()) {
-      throw new GateRuntimeException("Encountered empty extension when trying to save document "+docName);
-    }
-    DocumentExporter de = extension2Exporter.get(ext);
-    logger.info("DirectoryCorpus/saveDocument exit is "+ext+" exporter "+de);
-    File docFile = new File(backingDirectoryFile, docName);
-    try {
-      logger.info("DirectoryCorpus/saveDocument trying to save document "+doc.getName()+" using exporter "+de);
-      de.export(doc, docFile);
-      logger.info("DirectoryCorpus/saveDocument saved: "+doc.getName());
-    } catch (IOException ex) {
-      throw new GateRuntimeException("Could not save file: "+docFile,ex);
-    }
-  }
-  
-  protected Document readDocument(String docName) {
-    //System.out.println("DirCorp: read doc "+docName);
-    File docFile = new File(backingDirectoryFile, docName);
-    URL docURL;
-    Document doc = null;
-    try {
-      docURL = docFile.toURI().toURL();
-    } catch (MalformedURLException ex) {
-      throw new GateRuntimeException(
-              "Could not create URL for document name "+docName,ex);
-    }
-    FeatureMap params = Factory.newFeatureMap();
-    params.put(Document.DOCUMENT_URL_PARAMETER_NAME,docURL);
-    try {
-       doc =
-          (Document) Factory.createResource(
-            DocumentImpl.class.getName(),
-            params, null, docName);
-    } catch (ResourceInstantiationException ex) {
-        throw new GateRuntimeException(
-          "Could not create Document from file " + docFile, ex);
-    }
-    return doc;
-  }
+	// Methods to be implemented from List
 
-  // NOTE: not used at the moment, our corpus is always immutable so far!
-  /*
-  protected void removeDocument(String docName) {
-    File docFile = new File(backingDirectoryFile, docName);
-    docFile.delete();
-  }
-  */
-  
+	/**
+	 * Add a document to the corpus. If the document has a name that is already in
+	 * the list of documents, return false and do not add the document. Note that
+	 * only the name is checked! If the name of the document added is not ending in
+	 * ".xml", a GateRuntimeException is thrown. If the document is already adopted
+	 * by some data store throw an exception. IMPORTANT: this is NOT IMPLEMENTED at
+	 * the moment!
+	 */
+	@Override
+	public boolean add(Document doc) {
+		throw new MethodNotImplementedException(notImplementedMessage("add(Document doc)"));
+	}
+	/*
+	 * public boolean add(Document doc) { if(!saveDocuments) { return false; }
+	 * //System.out.println("DocCorp: called add(Object): "+doc.getName()); String
+	 * docName = doc.getName(); ensureValidDocumentName(docName,true); Integer index
+	 * = documentIndexes.get(docName); if(index != null) { return false; // if that
+	 * name is already in the corpus, do not add } else { // for now, we do not
+	 * allow any document to be added that is already // adopted by a datastore.
+	 * if(doc.getDataStore() != null) { throw new
+	 * GateRuntimeException("Cannot add "+doc.getName()
+	 * +" which belongs to datastore "+doc.getDataStore().getName()); }
+	 * saveDocument(doc); int i = documentNames.size(); documentNames.add(docName);
+	 * documentIndexes.put(docName, i); isLoadeds.add(false); if(!isTransientCorpus)
+	 * { adoptDocument(doc); } fireDocumentAdded(new CorpusEvent( this, doc, i,
+	 * CorpusEvent.DOCUMENT_ADDED));
+	 * 
+	 * return true; } }
+	 */
 
-  protected void adoptDocument(Document doc) {
-    try {
-      doc.setDataStore(ourDS);
-      //System.err.println("Adopted document "+doc.getName());
-    } catch (PersistenceException ex) {
-      //System.err.println("Got exception when adopting: "+ex);
-    }
-  }
-  
-  protected class DirectoryCorpusIterator implements Iterator<Document> {
-    int nextIndex = 0;
-    @Override
-    public boolean hasNext() {
-      return (documentNames.size() > nextIndex);
-    }
-    @Override
-    public Document next() {
-      if(hasNext()) {
-        return get(nextIndex++);
-      } else {
-        return null;
-      }
-    }
-    @Override
-    public void remove() {
-      throw new MethodNotImplementedException();
-    }    
-  }
+	/**
+	 * This removes all documents from the corpus. Note that this does nothing when
+	 * the saveDocuments parameter is set to false. If the outDirectoryURL parameter
+	 * was set, this method will throw a GateRuntimeException. IMPORTANT: this is
+	 * not implemented at the moment!!
+	 */
+	@Override
+	public void clear() {
+		throw new MethodNotImplementedException(notImplementedMessage("clear()"));
+	}
+	/*
+	 * public void clear() { if(!saveDocuments) { return; } if(outDirectoryURL !=
+	 * null) { throw new GateRuntimeException(
+	 * "clear method not supported when outDirectoryURL is set for "+
+	 * this.getName()); } for(int i=documentNames.size()-1; i>=0; i--) { remove(i);
+	 * } }
+	 */
 
+	/**
+	 * This checks if a document with the same name as the document passed is
+	 * already in the corpus. IMPORTANT: The content is not considered for this,
+	 * only the name is relevant!
+	 */
+	@Override
+	public boolean contains(Object docObj) {
+		Document doc = (Document) docObj;
+		String docName = doc.getName();
+		return (documentIndexes.get(docName) != null);
+	}
+
+	/**
+	 * Return the document for the given index in the corpus. An
+	 * IndexOutOfBoundsException is thrown when the index is not contained in the
+	 * corpus. The document will be read from the file only if it is not already
+	 * loaded. If it is already loaded a reference to that document is returned.
+	 * 
+	 * @param index
+	 * @return
+	 */
+	@Override
+	public Document get(int index) {
+		// System.out.println("DirCorp: called get(index): "+index);
+		if (index < 0 || index >= documentNames.size()) {
+			throw new IndexOutOfBoundsException(
+					"Index " + index + " not in corpus " + this.getName() + " of size " + documentNames.size());
+		}
+		String docName = documentNames.get(index);
+		if (isDocumentLoaded(index)) {
+			Document doc = loadedDocuments.get(docName);
+			// System.out.println("Returning loaded document "+doc);
+			return doc;
+		}
+		// System.out.println("Document not loaded, reading");
+		Document doc = readDocument(docName);
+		loadedDocuments.put(docName, doc);
+		isLoadeds.set(index, true);
+		adoptDocument(doc);
+		return doc;
+	}
+
+	/**
+	 * Returns the index of the document with the same name as the given document in
+	 * the corpus. The content of the document is not considered for this.
+	 * 
+	 * @param docObj
+	 * @return
+	 */
+	@Override
+	public int indexOf(Object docObj) {
+		Document doc = (Document) docObj;
+		String docName = doc.getName();
+		Integer index = documentIndexes.get(docName);
+		if (index == null) {
+			return -1;
+		} else {
+			return index;
+		}
+	}
+
+	/**
+	 * Returns an iterator to iterate through the documents of the corpus. The
+	 * iterator does not allow modification of the corpus.
+	 * 
+	 * @return
+	 */
+	@Override
+	public Iterator<Document> iterator() {
+		return new DirectoryCorpusIterator();
+	}
+
+	/**
+	 * Removes the document with the given index from the corpus. This is not
+	 * supported and throws a GateRuntimeException if the outDirectoryURL was
+	 * specified for this corpus. If the saveDocuments parameter is false for this
+	 * corpus, this method does nothing. A document which is removed from the corpus
+	 * will have its dummy datastore removed and look like a transient document
+	 * again.
+	 * 
+	 * IMPORTANT: this is NOT IMPLEMENTED yet!
+	 * 
+	 * @param index
+	 * @return the document that was just removed from the corpus
+	 */
+	@Override
+	public Document remove(int index) {
+		throw new MethodNotImplementedException(notImplementedMessage("remove(int index)"));
+	}
+	/*
+	 * public Document remove(int index) { Document doc = (Document)get(index);
+	 * String docName = documentNames.get(index); documentNames.remove(index);
+	 * if(isLoadeds.get(index)) { loadedDocuments.remove(docName); }
+	 * isLoadeds.remove(index); documentIndexes.remove(docName);
+	 * removeDocument(docName); if (!isTransientCorpus) { try {
+	 * doc.setDataStore(null); } catch (PersistenceException ex) { // this should
+	 * never happen } } fireDocumentRemoved(new CorpusEvent( this, doc, index,
+	 * CorpusEvent.DOCUMENT_REMOVED)); return doc; }
+	 */
+
+	/**
+	 * Removes a document with the same name as the given document from the corpus.
+	 * This is not supported and throws a GateRuntimeException if the
+	 * outDirectoryURL was specified for this corpus. If the saveDocuments parameter
+	 * is false for this corpus, this method does nothing and always returns false.
+	 * If the a document with the same name as the given document is not found int
+	 * the corpus, this does nothing and returns false.
+	 * 
+	 * @param docObj
+	 * @return true if a document was removed from the corpus
+	 */
+	@Override
+	public boolean remove(Object docObj) {
+		throw new MethodNotImplementedException(notImplementedMessage("remove(Object docObj)"));
+	}
+	/*
+	 * public boolean remove(Object docObj) { int index = indexOf(docObj); if(index
+	 * == -1) { return false; } String docName = documentNames.get(index);
+	 * documentNames.remove(index); isLoadeds.remove(index);
+	 * documentIndexes.remove(docName); removeDocument(docName); Document doc =
+	 * isDocumentLoaded(index) ? (Document)get(index) : null; if
+	 * (!isTransientCorpus) { try { doc.setDataStore(null); } catch
+	 * (PersistenceException ex) { // this should never happen } }
+	 * fireDocumentRemoved(new CorpusEvent( this, doc, index,
+	 * CorpusEvent.DOCUMENT_REMOVED)); return true; }
+	 */
+
+	/**
+	 * Remove all the documents in the collection from the corpus.
+	 *
+	 * @param coll
+	 * @return true if any document was removed
+	 */
+	@Override
+	public boolean removeAll(Collection coll) {
+		throw new MethodNotImplementedException(notImplementedMessage("removeAll(Collection coll)"));
+	}
+	/*
+	 * public boolean removeAll(Collection coll) { boolean ret = false; for(Object
+	 * docObj : coll) { ret = ret || remove(docObj); } return ret; }
+	 */
+
+	/**
+	 * This method is not implemented and always throws a
+	 * MethodNotImplementedException.
+	 * 
+	 * @param index
+	 * @param obj
+	 * @return
+	 */
+	@Override
+	public Document set(int index, Document obj) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("set(int,Object)"));
+	}
+
+	@Override
+	public int size() {
+		return documentNames.size();
+	}
+
+	/**
+	 * This method is not implemented and always throws a
+	 * MethodNotImplementedException.
+	 *
+	 * @param i1
+	 * @param i2
+	 * @return
+	 */
+	@Override
+	public List<Document> subList(int i1, int i2) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("subList(int,int)"));
+	}
+
+	// **************************
+	// helper methods
+	// ************************
+
+	// This method should only get called by the datastore when a document
+	// is synced. This will happen automatically when a document is unloaded
+	// or when a document is deliberately synced via its datastore.
+	@Override
+	protected void saveDocument(Document doc) {
+		// System.out.println("DirCorp: save doc "+doc.getName());
+		// If the corpus is read-only, nothing gets saved
+		if (getReadonly()) {
+			return;
+		}
+		String docName = doc.getName();
+		// get the extension and then look up the document exporter for that
+		// extension which will be used to do the actual saving.
+		int extDotPos = docName.lastIndexOf(".");
+		if (extDotPos <= 0) {
+			throw new GateRuntimeException(
+					"Did not find a file name extensions when trying to save document " + docName);
+		}
+		String ext = docName.substring(extDotPos + 1);
+		if (ext.isEmpty()) {
+			throw new GateRuntimeException("Encountered empty extension when trying to save document " + docName);
+		}
+		DocumentExporter de = extension2Exporter.get(ext);
+		logger.info("DirectoryCorpus/saveDocument exit is " + ext + " exporter " + de);
+		File docFile = new File(backingDirectoryFile, docName);
+		try {
+			logger.info(
+					"DirectoryCorpus/saveDocument trying to save document " + doc.getName() + " using exporter " + de);
+			de.export(doc, docFile);
+			logger.info("DirectoryCorpus/saveDocument saved: " + doc.getName());
+		} catch (IOException ex) {
+			throw new GateRuntimeException("Could not save file: " + docFile, ex);
+		}
+	}
+
+	protected Document readDocument(String docName) {
+		// System.out.println("DirCorp: read doc "+docName);
+		File docFile = new File(backingDirectoryFile, docName);
+		URL docURL;
+		Document doc = null;
+		try {
+			docURL = docFile.toURI().toURL();
+		} catch (MalformedURLException ex) {
+			throw new GateRuntimeException("Could not create URL for document name " + docName, ex);
+		}
+		FeatureMap params = Factory.newFeatureMap();
+		params.put(Document.DOCUMENT_URL_PARAMETER_NAME, docURL);
+		try {
+			doc = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, docName);
+		} catch (ResourceInstantiationException ex) {
+			throw new GateRuntimeException("Could not create Document from file " + docFile, ex);
+		}
+		return doc;
+	}
+
+	// NOTE: not used at the moment, our corpus is always immutable so far!
+	/*
+	 * protected void removeDocument(String docName) { File docFile = new
+	 * File(backingDirectoryFile, docName); docFile.delete(); }
+	 */
+
+	protected void adoptDocument(Document doc) {
+		try {
+			doc.setDataStore(ourDS);
+			// System.err.println("Adopted document "+doc.getName());
+		} catch (PersistenceException ex) {
+			// System.err.println("Got exception when adopting: "+ex);
+		}
+	}
+
+	protected class DirectoryCorpusIterator implements Iterator<Document> {
+		int nextIndex = 0;
+
+		@Override
+		public boolean hasNext() {
+			return (documentNames.size() > nextIndex);
+		}
+
+		@Override
+		public Document next() {
+			if (hasNext()) {
+				return get(nextIndex++);
+			} else {
+				return null;
+			}
+		}
+
+		@Override
+		public void remove() {
+			throw new MethodNotImplementedException();
+		}
+	}
 
 } // class DirectoryCorpus
