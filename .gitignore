@@ -20,3 +20,8 @@ hs_err_pid*
 
 # javadoc
 doc/javadoc
+/bin/
+/.classpath
+/.project
+/target/
+/.settings/
