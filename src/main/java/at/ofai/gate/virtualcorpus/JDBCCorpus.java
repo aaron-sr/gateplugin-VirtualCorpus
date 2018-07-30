@@ -21,12 +21,7 @@
 
 package at.ofai.gate.virtualcorpus;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileFilter;
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.URL;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -35,13 +30,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import java.util.zip.GZIPOutputStream;
 
 import org.apache.log4j.Logger;
 
@@ -49,7 +41,6 @@ import gate.Corpus;
 import gate.Document;
 import gate.Factory;
 import gate.FeatureMap;
-import gate.Gate;
 import gate.Resource;
 import gate.corpora.DocumentImpl;
 import gate.creole.ResourceInstantiationException;
@@ -57,10 +48,8 @@ import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
 import gate.event.CorpusListener;
-import gate.event.CreoleListener;
 import gate.persist.PersistenceException;
 import gate.util.GateRuntimeException;
-import gate.util.MethodNotImplementedException;
 import gate.util.persistence.PersistenceManager;
 
 /**
@@ -89,23 +78,15 @@ import gate.util.persistence.PersistenceManager;
  */
 
 @CreoleResource(name = "JDBCCorpus", interfaceName = "gate.Corpus", icon = "corpus", helpURL = "http://code.google.com/p/gateplugin-virtualcorpus/wiki/JDBCCorpusUsage", comment = "A corpus backed by GATE documents stored in a JDBC table")
-public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener {
-
-	// *****
-	// Fields
-	// ******
-
-	/**
-	 * 
-	 */
+public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private static final long serialVersionUID = -8485133333415382902L;
+	private static Logger logger = Logger.getLogger(JDBCCorpus.class);
 
 	protected List<CorpusListener> listeners = new ArrayList<CorpusListener>();
 
-	protected String jdbcDriver = "org.h2.Driver";
+	protected String jdbcDriver;
 
-	@CreoleParameter(comment = "The JDBC driver to use", defaultValue = "org.h2.Driver")
-	// other values: com.mysql.jdbc.Driver
+	@CreoleParameter(comment = "The JDBC driver to use", defaultValue = "org.sqlite.JDBC")
 	public void setJdbcDriver(String driver) {
 		jdbcDriver = driver;
 	}
@@ -116,8 +97,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 
 	protected String jdbcUrl = "";
 
-	@CreoleParameter(comment = "The JDBC URL, may contain $prop{name} or $env{name} or ${relpath}", defaultValue = "jdbc:h2:${dbdirectory}/YOURDBPREFIX")
-	// other values: jdbc:mysql://localhost:3306/database?user=user&password=pass
+	@CreoleParameter(comment = "The JDBC URL, may contain $prop{name} or $env{name} or ${relpath}", defaultValue = "jdbc:sqlite:")
 	public void setJdbcUrl(String url) {
 		jdbcUrl = url;
 	}
@@ -164,7 +144,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 
 	/**
 	 */
-	@CreoleParameter(comment = "The database table name")
+	@CreoleParameter(comment = "The database table name", defaultValue = "")
 	public void setTableName(String name) {
 		tableName = name;
 	}
@@ -175,7 +155,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 
 	protected String tableName;
 
-	@CreoleParameter(comment = "The document id/name field name")
+	@CreoleParameter(comment = "The document id/name field name", defaultValue = "")
 	public void setDocumentNameField(String name) {
 		documentNameField = name;
 	}
@@ -186,7 +166,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 
 	protected String documentNameField;
 
-	@CreoleParameter(comment = "The document content field name")
+	@CreoleParameter(comment = "The document content field name", defaultValue = "")
 	public void setDocumentContentField(String name) {
 		documentContentField = name;
 	}
@@ -224,15 +204,11 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 
 	protected String selectSQL = "SELECT ${documentNameField} from ${tableName}";
 
-	protected DummyDataStore4JDBCCorp ourDS = null;
 	protected Connection dbConnection = null;
 	protected PreparedStatement getContentStatement = null;
 	protected PreparedStatement updateContentStatement = null;
 
-	private static final String DEFAULT_MIME_TYPE = "application/xml";
 	String encoding = "utf-8";
-
-	private static Logger logger = Logger.getLogger(JDBCCorpus.class);
 
 	@Override
 	/**
@@ -281,14 +257,12 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 			stmt = dbConnection.createStatement();
 			ResultSet rs = null;
 			rs = stmt.executeQuery(query);
-			int i = 0;
+			List<String> documentNames = new ArrayList<>();
 			while (rs.next()) {
 				String docName = rs.getString(getDocumentNameField());
 				documentNames.add(docName);
-				isLoadeds.add(false);
-				documentIndexes.put(docName, i);
-				i++;
 			}
+			initDocuments(documentNames);
 		} catch (SQLException ex) {
 			throw new ResourceInstantiationException("Problem accessing database", ex);
 		}
@@ -298,20 +272,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 		} catch (PersistenceException e) {
 			throw new ResourceInstantiationException("Could not register persistence", e);
 		}
-		try {
-			// TODO: use more fields or a hash to make this unique?
-			ourDS = (DummyDataStore4JDBCCorp) Factory.createDataStore(
-					"at.ofai.gate.virtualcorpus.DummyDataStore4JDBCCorp", expandedUrl + "//" + getTableName());
-			ourDS.setName("DummyDS4_" + this.getName());
-			ourDS.setComment("Dummy DataStore for JDBCCorpus " + this.getName());
-			ourDS.setCorpus(this);
-			// System.err.println("Created dummy corpus: "+ourDS+" with name
-			// "+ourDS.getName());
-		} catch (Exception ex) {
-			throw new ResourceInstantiationException("Could not create dummy data store", ex);
-		}
-		Gate.getCreoleRegister().addCreoleListener(this);
-
 		// create all the prepared statements we need for accessing stuff in the db
 		try {
 			query = "SELECT " + getDocumentContentField() + " FROM " + getTableName() + " WHERE "
@@ -334,264 +294,16 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 		return this;
 	}
 
-	/**
-	 * This method is not implemented and throws a
-	 * gate.util.MethodNotImplementedException.
-	 * 
-	 * @param directory
-	 * @param filter
-	 * @param encoding
-	 * @param recurseDirectories
-	 */
-	@Override
-	public void populate(URL directory, FileFilter filter, String encoding, boolean recurseDirectories) {
-		populate(directory, filter, encoding, null, recurseDirectories);
-	}
-
-	/**
-	 * This method is not implemented and throws a
-	 * gate.util.MethodNotImplementedException.
-	 *
-	 * @param directory
-	 * @param filter
-	 * @param encoding
-	 * @param mimeType
-	 * @param recurseDirectories
-	 */
-	@Override
-	public void populate(URL directory, FileFilter filter, String encoding, String mimeType,
-			boolean recurseDirectories) {
-		/*
-		 * TEMPORARY if(isTransientCorpus) { throw new
-		 * GateRuntimeException("Cannot populate a transient JDBC corpus"); } else { try
-		 * { CorpusImpl.populate(this, directory, filter, encoding, mimeType,
-		 * recurseDirectories); } catch (IOException ex) { throw new
-		 * GateRuntimeException("IO error",ex); } }
-		 */
-	}
-
 	@Override
 	public void cleanup() {
-		// TODO:
-		// deregister our listener for resources of type document
-		//
 		try {
 			if (dbConnection != null && !dbConnection.isClosed()) {
 				dbConnection.close();
 			}
 		} catch (SQLException ex) {
-			// TODO: log, but otherwise ignore
-		}
-		Gate.getDataStoreRegister().remove(ourDS);
-	}
-
-	@Override
-	public void setName(String name) {
-		super.setName(name);
-		if (ourDS != null) {
-			ourDS.setName("DummyDS4_" + this.getName());
-			ourDS.setComment("Dummy DataStore for JDBCCorpus " + this.getName());
 		}
 	}
 
-	// Methods to be implemented from List
-
-	/**
-	 * Add a document to the corpus. If the document has a name that is already in
-	 * the list of documents, return false and do not add the document. Note that
-	 * only the name is checked! If the name of the document added is not ending in
-	 * ".xml", a GateRuntimeException is thrown. If the document is already adopted
-	 * by some data store throw an exception.
-	 */
-	@Override
-	public boolean add(Document doc) {
-		System.err.println("CALLED add(Document) for document " + doc.getName() + " NOT IMPLEMENTED");
-		/*
-		 * TEMPORARY if(!saveDocuments) { return false; }
-		 * //System.out.println("JDBCCorp: called add(Object): "+doc.getName()); String
-		 * docName = doc.getName(); Integer index = documentIndexes.get(docName);
-		 * if(index != null) { return false; // if that name is already in the corpus,
-		 * do not add } else { if(doc.getDataStore() != null) { throw new
-		 * GateRuntimeException("Cannot add "+doc.getName()
-		 * +" which belongs to datastore "+doc.getDataStore().getName()); } try {
-		 * insertDocument(doc); } catch (Exception ex) { throw new
-		 * GateRuntimeException("Problem inserting document "+docName,ex); } int i =
-		 * documentNames.size(); documentNames.add(docName);
-		 * documentIndexes.put(docName, i); isLoadeds.add(false); if(!isTransientCorpus)
-		 * { adoptDocument(doc); } fireDocumentAdded(new CorpusEvent( t } his, doc, i,
-		 * CorpusEvent.DOCUMENT_ADDED));
-		 * 
-		 * return true; }
-		 */
-		return true;
-	}
-
-	/**
-	 * This removes all documents from the corpus. Note that this does nothing when
-	 * the saveDocuments parameter is set to false. If the outDirectoryURL parameter
-	 * was set, this method will throw a GateRuntimeException.
-	 */
-	@Override
-	public void clear() {
-		System.err.println("Called clear(), not implemented, does nothing");
-		/**
-		 * TEMPORARY if(!saveDocuments) { return; } for(int i=documentNames.size()-1;
-		 * i>=0; i--) { remove(i); }
-		 */
-	}
-
-	/**
-	 * This checks if a document with the same name as the document passed is
-	 * already in the corpus. The content is not considered for this.
-	 */
-	@Override
-	public boolean contains(Object docObj) {
-		Document doc = (Document) docObj;
-		String docName = doc.getName();
-		return (documentIndexes.get(docName) != null);
-	}
-
-	/**
-	 * Return the document for the given index in the corpus. An
-	 * IndexOutOfBoundsException is thrown when the index is not contained in the
-	 * corpus. The document will be read from the file only if it is not already
-	 * loaded. If it is already loaded a reference to that document is returned.
-	 * 
-	 * @param index
-	 * @return
-	 */
-	@Override
-	public Document get(int index) {
-		// System.out.println("DirCorp: called get(index): "+index);
-		if (index < 0 || index >= documentNames.size()) {
-			throw new IndexOutOfBoundsException(
-					"Index " + index + " not in corpus " + this.getName() + " of size " + documentNames.size());
-		}
-		String docName = documentNames.get(index);
-		// System.err.println("Trying to get docname "+docName+" for index "+index);
-		if (isDocumentLoaded(index)) {
-			// System.err.println("Document is already loaded, returning");
-			Document doc = loadedDocuments.get(docName);
-			// System.out.println("Returning loaded document "+doc);
-			return doc;
-		}
-		// System.err.println("Document is not loaded, trying to read");
-		// System.out.println("Document not loaded, reading");
-		Document doc;
-		try {
-			doc = readDocument(docName);
-		} catch (Exception ex) {
-			throw new GateRuntimeException("Problem retrieving document data for " + docName, ex);
-		}
-		// System.err.println("did readDocument without exception, should have a
-		// document: "+(doc==null ? "NULL" : doc.getName()));
-		loadedDocuments.put(docName, doc);
-		isLoadeds.set(index, true);
-		adoptDocument(doc);
-		return doc;
-	}
-
-	/**
-	 * Returns the index of the document with the same name as the given document in
-	 * the corpus. The content of the document is not considered for this.
-	 * 
-	 * @param docObj
-	 * @return
-	 */
-	@Override
-	public int indexOf(Object docObj) {
-		Document doc = (Document) docObj;
-		String docName = doc.getName();
-		Integer index = documentIndexes.get(docName);
-		if (index == null) {
-			return -1;
-		} else {
-			return index;
-		}
-	}
-
-	/**
-	 * Returns an iterator to iterate through the documents of the corpus. The
-	 * iterator does not allow modification of the corpus.
-	 * 
-	 * @return
-	 */
-	@Override
-	public Iterator<Document> iterator() {
-		return new JDBCCorpusIterator();
-	}
-
-	/**
-	 * 
-	 * @param index
-	 * @return the document that was just removed from the corpus
-	 */
-	@Override
-	public Document remove(int index) {
-		throw new MethodNotImplementedException(notImplementedMessage("remove(int)"));
-	}
-	/*
-	 * public Document remove(int index) { Document doc = (Document)get(index);
-	 * String docName = documentNames.get(index); documentNames.remove(index);
-	 * if(isLoadeds.get(index)) { loadedDocuments.remove(docName); }
-	 * isLoadeds.remove(index); documentIndexes.remove(docName);
-	 * removeDocument(docName); try { doc.setDataStore(null); } catch
-	 * (PersistenceException ex) { // this should never happen }
-	 * fireDocumentRemoved(new CorpusEvent( this, doc, index,
-	 * CorpusEvent.DOCUMENT_REMOVED)); return doc; }
-	 */
-
-	/**
-	 * Removes a document with the same name as the given document from the corpus.
-	 * This is not supported and throws a GateRuntimeException if the
-	 * outDirectoryURL was specified for this corpus. If the saveDocuments parameter
-	 * is false for this corpus, this method does nothing and always returns false.
-	 * If the a document with the same name as the given document is not found int
-	 * the corpus, this does nothing and returns false.
-	 * 
-	 * @param docObj
-	 * @return true if a document was removed from the corpus
-	 */
-	@Override
-	public boolean remove(Object docObj) {
-		throw new MethodNotImplementedException(notImplementedMessage("remove(Object)"));
-	}
-	/*
-	 * public boolean remove(Object docObj) { int index = indexOf(docObj); if(index
-	 * == -1) { return false; } String docName = documentNames.get(index);
-	 * documentNames.remove(index); isLoadeds.remove(index);
-	 * documentIndexes.remove(docName); removeDocument(docName); Document doc =
-	 * isDocumentLoaded(index) ? (Document)get(index) : null; try {
-	 * doc.setDataStore(null); } catch (PersistenceException ex) { // this should
-	 * never happen } fireDocumentRemoved(new CorpusEvent( this, doc, index,
-	 * CorpusEvent.DOCUMENT_REMOVED)); return true; }
-	 */
-
-	/**
-	 * Remove all the documents in the collection from the corpus.
-	 *
-	 * @param coll
-	 * @return true if any document was removed
-	 */
-	@Override
-	public boolean removeAll(Collection coll) {
-		throw new MethodNotImplementedException(notImplementedMessage("removeAll(Collection)"));
-	}
-	/*
-	 * public boolean removeAll(Collection coll) { boolean ret = false; for(Object
-	 * docObj : coll) { ret = ret || remove(docObj); } return ret; }
-	 */
-
-	@Override
-	public int size() {
-		return documentNames.size();
-	}
-
-	// **************************
-	// helper methods
-	// ************************
-	// TODO: this should allow saving to a different field?
-	@Override
 	protected void saveDocument(Document doc) {
 		if (getReadonly()) {
 			return;
@@ -607,70 +319,33 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 		}
 	}
 
-	protected void insertDocument(Document doc) throws SQLException, ResourceInstantiationException, IOException {
-		throw new GateRuntimeException("Adding new documents not supported");
-	}
-	/*
-	 * protected void insertDocument(Document doc) throws SQLException,
-	 * ResourceInstantiationException, IOException { if (!getSaveDocuments()) {
-	 * return; } String docContent = doc.toXml(); String docName = doc.getName();
-	 * String docEncoding = (String) doc.getParameterValue("encoding"); String
-	 * usedEncoding = getActiveEncoding(docEncoding);
-	 * 
-	 * insertContentStatement.setString(1, docName); String docMimeType =
-	 * (String)doc.getParameterValue("mimeType"); // when we have encoding and/or
-	 * mime type fields, set them! if(haveEncodingField) { if(haveMimeTypeField) {
-	 * insertContentStatement.setString(3, usedEncoding);
-	 * insertContentStatement.setString(4, docMimeType); } else {
-	 * insertContentStatement.setString(3, usedEncoding); } } else {
-	 * if(haveMimeTypeField) { insertContentStatement.setString(3, docMimeType); }
-	 * else { // neither encoding, nor mime type, nothing needs to be done } } if
-	 * (getUseCompression() || getCompressOnCopy()) { InputStream iscomp =
-	 * getGZIPCompressedInputStream(docContent, usedEncoding);
-	 * insertContentStatement.setBinaryStream(2, iscomp);
-	 * insertContentStatement.execute(); iscomp.close(); } else {
-	 * insertContentStatement.setString(2, docContent);
-	 * insertContentStatement.execute(); }
-	 * 
-	 * }
-	 */
-
-	protected InputStream getGZIPCompressedInputStream(String theString, String theEncoding) throws IOException {
-		ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		GZIPOutputStream gos = new GZIPOutputStream(baos);
-		gos.write(theString.getBytes(theEncoding));
-		gos.close();
-		ByteArrayInputStream inputStream = new ByteArrayInputStream(baos.toByteArray());
-		return inputStream;
-	}
-
-	protected Document readDocument(String docName) throws SQLException, IOException {
-		// System.out.println("JDBCCorp: read doc "+docName);
+	@Override
+	protected Document readDocument(String docName) {
 		Document doc = null;
-
-		ResultSet rs = null;
-		String docEncoding = encoding;
-
-		// System.out.println("Trying to get content for "+docName);
-		getContentStatement.setString(1, docName);
-		// System.out.println("After setString: "+getContentStatement);
-		rs = getContentStatement.executeQuery();
-		if (!rs.next()) {
-			throw new GateRuntimeException("Document not found int the DB table: " + docName);
-		}
-
-		String content = rs.getString(1);
-
-		if (rs.next()) {
-			throw new GateRuntimeException("More than one row found for document name " + docName);
-		}
-
-		String docMimeType = mimeType;
-		FeatureMap params = Factory.newFeatureMap();
-		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
-		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, docEncoding);
-		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, docMimeType);
 		try {
+
+			ResultSet rs = null;
+			String docEncoding = encoding;
+
+			// System.out.println("Trying to get content for "+docName);
+			getContentStatement.setString(1, docName);
+			// System.out.println("After setString: "+getContentStatement);
+			rs = getContentStatement.executeQuery();
+			if (!rs.next()) {
+				throw new GateRuntimeException("Document not found int the DB table: " + docName);
+			}
+
+			String content = rs.getString(1);
+
+			if (rs.next()) {
+				throw new GateRuntimeException("More than one row found for document name " + docName);
+			}
+
+			String docMimeType = mimeType;
+			FeatureMap params = Factory.newFeatureMap();
+			params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
+			params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, docEncoding);
+			params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, docMimeType);
 			doc = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, docName);
 		} catch (Exception ex) {
 			throw new GateRuntimeException("Exception creating the document", ex);
@@ -678,50 +353,4 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus, CreoleListener 
 		return doc;
 	}
 
-	protected void removeDocument(String docName) {
-		throw new GateRuntimeException("Removing a document from JDBC corpus not supported");
-	}
-	/*
-	 * protected void removeDocument(String docName) {
-	 * 
-	 * if(getRemoveDocuments() && getSaveDocuments()) { try {
-	 * deleteRowStatement.execute(); } catch (SQLException ex) { throw new
-	 * GateRuntimeException("Problem when trying to delete table row for document "
-	 * +docName,ex); } } }
-	 */
-
-	protected void adoptDocument(Document doc) {
-		try {
-			// System.err.println("Trying to adopt document: "+(doc==null ? "NULL" :
-			// doc.getName()));
-			doc.setDataStore(ourDS);
-			// System.err.println("Adopted document "+doc.getName());
-		} catch (PersistenceException ex) {
-			System.err.println("Got exception when adopting: " + ex);
-		}
-	}
-
-	protected class JDBCCorpusIterator implements Iterator<Document> {
-		int nextIndex = 0;
-
-		@Override
-		public boolean hasNext() {
-			return (documentNames.size() > nextIndex);
-		}
-
-		@Override
-		public Document next() {
-			if (hasNext()) {
-				return get(nextIndex++);
-			} else {
-				return null;
-			}
-		}
-
-		@Override
-		public void remove() {
-			throw new MethodNotImplementedException();
-		}
-	}
-
-} // class JDBCCorpus
+}

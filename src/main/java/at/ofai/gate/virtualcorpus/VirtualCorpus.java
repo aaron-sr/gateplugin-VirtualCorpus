@@ -20,63 +20,35 @@
  */
 package at.ofai.gate.virtualcorpus;
 
-import gate.Corpus;
-import gate.DataStore;
-import gate.Document;
-import gate.Gate;
-import gate.Resource;
-import gate.creole.*;
-import gate.creole.metadata.CreoleParameter;
-import gate.creole.metadata.HiddenCreoleParameter;
-import gate.creole.metadata.Optional;
-import gate.event.CorpusEvent;
-import gate.event.CorpusListener;
-import gate.event.CreoleEvent;
-import gate.event.CreoleListener;
-import gate.persist.PersistenceException;
-import gate.util.GateRuntimeException;
-import gate.util.MethodNotImplementedException;
 import java.io.FileFilter;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+
 import org.apache.log4j.Logger;
+
+import gate.Corpus;
+import gate.Document;
+import gate.creole.AbstractLanguageResource;
+import gate.creole.metadata.CreoleParameter;
+import gate.creole.metadata.Optional;
+import gate.event.CorpusEvent;
+import gate.event.CorpusListener;
+import gate.util.GateRuntimeException;
+import gate.util.MethodNotImplementedException;
 
 /**
  * 
  * @author Johann Petrak
  */
-public abstract class VirtualCorpus extends AbstractLanguageResource implements Corpus, CreoleListener {
-
-	/**
-	 * Setter for the <code>immutable</code> LR initialization parameter.
-	 *
-	 * @param immutable
-	 *            If set to true, the corpus list cannot be changed, i.e. documents
-	 *            cannot be removed or deleted. All methods which would otherwise
-	 *            change the corpus content are silently ignored.
-	 * 
-	 *            NOTE: For now this is hidden and all instances of virtual corpora
-	 *            are immutable! This parameter may get removed in the future and
-	 *            all VirtualCorpus instances may forever remain immutable!
-	 *
-	 */
-	@Optional
-	@HiddenCreoleParameter
-	@CreoleParameter(comment = "if true, the corpus content cannot be changed, documents cannot be added or removed", defaultValue = "true")
-	public void setImmutable(Boolean immutable) {
-		this.immutable = immutable;
-	}
-
-	public Boolean getRemoveDocuments() {
-		return this.immutable;
-	}
-
-	protected Boolean immutable = true;
+public abstract class VirtualCorpus extends AbstractLanguageResource implements Corpus {
+	private static final long serialVersionUID = -7769699900341757030L;
+	private static Logger logger = Logger.getLogger(VirtualCorpus.class);
 
 	/**
 	 * Setter for the <code>readonly</code> LR initialization parameter.
@@ -98,29 +70,26 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	protected Boolean readonly = true;
 
+	@Override
 	public void populate( // OK
 			URL directory, FileFilter filter, String encoding, boolean recurseDirectories) {
 		throw new gate.util.MethodNotImplementedException(notImplementedMessage("populate(URL, FileFilter, boolean)"));
 	}
 
+	@Override
 	public long populate(URL url, String docRoot, String encoding, int nrdocs, String docNamePrefix, String mimetype,
 			boolean includeroot) {
 		throw new gate.util.MethodNotImplementedException(
 				notImplementedMessage("populate(URL, String, String, int, String, String, boolean"));
 	}
 
+	@Override
 	public void populate( // OK
 			URL directory, FileFilter filter, String encoding, String mimeType, boolean recurseDirectories) {
 		throw new gate.util.MethodNotImplementedException(
 				notImplementedMessage("populate(URL, FileFilter, String, String, boolean"));
 	}
 
-	/**
-	 * @param trecFile
-	 * @param encoding
-	 * @param numberOfDocumentsToExtract
-	 * @return
-	 */
 	public long populate(URL trecFile, String encoding, int numberOfDocumentsToExtract) {
 		throw new gate.util.MethodNotImplementedException(notImplementedMessage("populate(URL, String, int"));
 	}
@@ -130,50 +99,35 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 				+ this.getClass();
 	}
 
-	/**
-	 * For mapping document names to document indices.
-	 */
-	Map<String, Integer> documentIndexes = new HashMap<String, Integer>();
+	private List<String> documentNames = new ArrayList<String>();
+	private List<Boolean> isLoadeds = new ArrayList<Boolean>();
+	private Map<String, Document> loadedDocuments = new HashMap<String, Document>();
 
-	// for accessing document name by index
-	protected List<String> documentNames = new ArrayList<String>();
-	// for checking if ith document is loaded
-	protected List<Boolean> isLoadeds = new ArrayList<Boolean>();
-	// for finding index for document name
-	// REMOVE protected Map<String,Integer> documentIndexes = new
-	// HashMap<String,Integer>();
+	protected void initDocuments(List<String> documentNames) {
+		for (int i = 0; i < documentNames.size(); i++) {
+			String docName = documentNames.get(i);
+			this.documentNames.add(docName);
+			this.isLoadeds.add(false);
+		}
+	}
 
-	protected Map<String, Document> loadedDocuments = new HashMap<String, Document>();
+	protected abstract Document readDocument(String docName);
 
-	private static Logger logger = Logger.getLogger(VirtualCorpus.class);
-
-	protected DummyDataStore4Virtuals ourDS = null;
-
-	/**
-	 * Test is the document with the given index is loaded. If an index is specified
-	 * that is not in the corpus, a GateRuntimeException is thrown.
-	 * 
-	 * @param index
-	 * @return true if the document is loaded, false otherwise.
-	 */
 	@Override
 	public boolean isDocumentLoaded(int index) {
 		if (index < 0 || index >= isLoadeds.size()) {
 			throw new GateRuntimeException(
 					"Document number " + index + " not in corpus " + this.getName() + " of size " + isLoadeds.size());
 		}
-		// System.out.println("isDocumentLoaded called: "+isLoadeds.get(index));
 		return isLoadeds.get(index);
 	}
 
 	public boolean isDocumentLoaded(Document doc) {
 		String docName = doc.getName();
-		// System.out.println("DirCorp: called unloadDocument: "+docName);
-		Integer index = documentIndexes.get(docName);
-		if (index == null) {
-			throw new RuntimeException("Document " + docName + " is not contained in corpus " + this.getName());
+		if (!documentNames.contains(docName)) {
+			throw new GateRuntimeException("Document " + docName + " is not contained in corpus " + this.getName());
 		}
-		return isDocumentLoaded(index);
+		return isDocumentLoaded(documentNames.indexOf(docName));
 	}
 
 	/**
@@ -187,37 +141,24 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	 */
 	@Override
 	public void unloadDocument(Document doc) {
-		unloadDocument(doc, true);
-	}
-
-	// NOTE: unfortunately this method, like the unloadDocument(int) methods
-	// is not in the Corpus interface.
-	public void unloadDocument(Document doc, boolean sync) {
 		String docName = doc.getName();
 		logger.debug("DirectoryCorpus: called unloadDocument: " + docName);
-		Integer index = documentIndexes.get(docName);
-		if (index == null) {
+		int index = documentNames.indexOf(docName);
+		if (index == -1) {
 			throw new RuntimeException("Document " + docName + " is not contained in corpus " + this.getName());
 		}
 		if (isDocumentLoaded(index)) {
-			if (sync) {
-				try {
-					doc.sync();
-				} catch (Exception ex) {
-					throw new GateRuntimeException("Problem syncing document " + doc.getName(), ex);
-				}
+			try {
+				doc.sync();
+			} catch (Exception ex) {
+				throw new GateRuntimeException("Problem syncing document " + doc.getName(), ex);
 			}
 			loadedDocuments.remove(docName);
 			isLoadeds.set(index, false);
-			// System.err.println("Document unloaded: "+docName);
-		} // else silently do nothing
+		}
 	}
 
-	/**
-	 * Get the list of document names in this corpus.
-	 *
-	 * @return the list of document names
-	 */
+	@Override
 	public List<String> getDocumentNames() {
 		List<String> newList = new ArrayList<String>(documentNames);
 		return newList;
@@ -236,281 +177,203 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	/**
+	 * Return the document for the given index in the corpus. An
+	 * IndexOutOfBoundsException is thrown when the index is not contained in the
+	 * corpus. The document will be read from the file only if it is not already
+	 * loaded. If it is already loaded a reference to that document is returned.
+	 * 
+	 * @param index
 	 * @return
 	 */
 	@Override
-	public DataStore getDataStore() {
-		return ourDS;
+	public final Document get(int index) {
+		if (index < 0 || index >= documentNames.size()) {
+			throw new IndexOutOfBoundsException(
+					"Index " + index + " not in corpus " + this.getName() + " of size " + documentNames.size());
+		}
+		String docName = documentNames.get(index);
+		if (isDocumentLoaded(index)) {
+			Document doc = loadedDocuments.get(docName);
+			return doc;
+		}
+		Document doc;
+		try {
+			doc = readDocument(docName);
+		} catch (Exception ex) {
+			throw new GateRuntimeException("Problem retrieving document data for " + docName, ex);
+		}
+		loadedDocuments.put(docName, doc);
+		isLoadeds.set(index, true);
+		return doc;
 	}
 
-	/**
-	 * This always throws a PersistenceException as this kind of corpus cannot be
-	 * saved to a new datastore.
-	 * 
-	 * @param ds
-	 * @throws PersistenceException
-	 */
 	@Override
-	public void setDataStore(DataStore ds) throws PersistenceException {
-		// TODO: this oddly now gets invoked when trying to save a pipeline, so
-		// instead of throwing an exception we just do nothing for now
-		// throw new PersistenceException("Corpus "+this.getName()+
-		// " cannot be saved to a datastore");
-		System.err.println("Invoked setDataStore(ds)");
+	public final int size() {
+		return documentNames.size();
 	}
 
-	/**
-	 * This returns false because the corpus itself cannot be in a modified, unsaved
-	 * state.
-	 * 
-	 * For now all DirectoryCorpus objects are immutable: the list of documents
-	 * cannot be changed. Therefore, there is no way to modfy the corpus LR.
-	 * However, even if documents can be added or removed at some point, these
-	 * changes will be immediately reflected in the backing directory, so there is
-	 * no way to modify the corpus and not have these changes "saved" or "synced".
-	 * The bottom line is that this will always return false.
-	 * 
-	 * @return always false
-	 */
 	@Override
-	public boolean isModified() {
+	public final int indexOf(Object docObj) {
+		if (docObj instanceof Document) {
+			Document doc = (Document) docObj;
+			String docName = doc.getName();
+			return documentNames.indexOf(docName);
+		}
+		return -1;
+	}
+
+	@Override
+	public final boolean contains(Object docObj) {
+		if (docObj instanceof Document) {
+			Document doc = (Document) docObj;
+			String docName = doc.getName();
+			return documentNames.indexOf(docName) != -1;
+		}
 		return false;
 	}
 
-	/**
-	 * Syncing the corpus does nothing. For an immutable corpus, there is nothing
-	 * that would ever need to get synced (saved) and for a mutable corpus, all
-	 * changes are saved immediately so "syncing" is never necessary. NOTE: syncing
-	 * the corpus itself does not affect and should not affect any documents which
-	 * still may be modified and not synced.
-	 */
 	@Override
-	public void sync() {
-		// do nothing.
+	public boolean containsAll(Collection<?> c) {
+		for (Object object : c) {
+			if (!contains(object)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
-	/**
-	 * Set the name of the DirectoryCorpus. Note that this can be called by the
-	 * factory before init is run!
-	 * 
-	 * @param name
-	 */
 	@Override
-	public void setName(String name) {
-		logger.info("VirtualCorpus: calling setName with " + name);
-		super.setName(name);
-		// If we get called before init, there will be no DS yet, so no need
-		// to rename it!
-		if (ourDS != null) {
-			ourDS.setName("DummyDS4_" + this.getName());
-			ourDS.setComment("Dummy DataStore for VirtualCorpus " + this.getName());
+	public List<Document> subList(int i1, int i2) {
+		throw new MethodNotImplementedException(notImplementedMessage("subList(int,int)"));
+	}
+
+	@Override
+	public Object[] toArray() {
+		List<Document> documents = new ArrayList<>();
+		for (int i = 0; i < documentNames.size(); i++) {
+			Document document = get(i);
+			documents.add(document);
+		}
+		return documents.toArray();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public Object[] toArray(Object[] x) {
+		List<Document> documents = new ArrayList<>();
+		for (int i = 0; i < documentNames.size(); i++) {
+			Document document = get(i);
+			documents.add(document);
+		}
+		return documents.toArray(x);
+	}
+
+	@Override
+	public final Iterator<Document> iterator() {
+		return new VirtualCorpusIterator(this);
+	}
+
+	private static class VirtualCorpusIterator implements Iterator<Document> {
+		private VirtualCorpus corpus;
+		private int nextIndex = 0;
+
+		public VirtualCorpusIterator(VirtualCorpus corpus) {
+			this.corpus = corpus;
+		}
+
+		@Override
+		public boolean hasNext() {
+			return (corpus.documentNames.size() > nextIndex);
+		}
+
+		@Override
+		public Document next() {
+			if (hasNext()) {
+				return corpus.get(nextIndex++);
+			} else {
+				return null;
+			}
+		}
+
+		@Override
+		public void remove() {
+			throw new MethodNotImplementedException();
 		}
 	}
 
-	protected abstract void saveDocument(Document doc);
+	@Override
+	public int lastIndexOf(Object docObj) {
+		if (docObj instanceof Document) {
+			Document doc = (Document) docObj;
+			String docName = doc.getName();
+			return documentNames.lastIndexOf(docName);
+		}
+		return -1;
+	}
 
 	@Override
-	public abstract Document get(int index);
+	public boolean isEmpty() {
+		return (documentNames.isEmpty());
+	}
 
-	/**
-	 * This method is not implemented and throws a
-	 * gate.util.MethodNotImplementedException
-	 * 
-	 * @param index
-	 * @param docObj
-	 */
-	public void add(int index, Document docObj) {
+	@Override
+	public final boolean add(Document e) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("add(Object)"));
+	}
+
+	@Override
+	public final void add(int index, Document docObj) {
 		throw new gate.util.MethodNotImplementedException(notImplementedMessage("add(int,Object)"));
 	}
 
-	/**
-	 * This method is not implemented and always throws a
-	 * MethodNotImplementedException.
-	 *
-	 * @param i1
-	 * @param i2
-	 * @return
-	 */
-	public List<Document> subList(int i1, int i2) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("subList(int,int)"));
+	@Override
+	public final Document set(int index, Document obj) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("set(int,Object)"));
 	}
 
-	/**
-	 * This method is not implemented and always throws a
-	 * MethodNotImplementedException.
-	 *
-	 * @return
-	 */
-	public Object[] toArray() {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("toArray()"));
+	@Override
+	public final boolean addAll(Collection<? extends Document> c) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("addAll(Collection)"));
 	}
 
-	/**
-	 * This method is not implemented and always throws a
-	 * MethodNotImplementedException.
-	 *
-	 * @return
-	 */
-	public Object[] toArray(Object[] x) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("toArray()"));
+	@Override
+	public final boolean addAll(int i, Collection<? extends Document> c) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("addAll(int,Object)"));
 	}
 
-	/**
-	 * This method is not implemented and always throws a
-	 * MethodNotImplementedException.
-	 *
-	 * @param coll
-	 * @return
-	 */
-	public boolean retainAll(Collection coll) {
+	@Override
+	public final boolean retainAll(Collection<?> c) {
 		throw new gate.util.MethodNotImplementedException(notImplementedMessage("retainAll(Collection)"));
 	}
 
-	/**
-	 * This method is not implemented and always throws a
-	 * MethodNotImplementedException.
-	 * 
-	 * @param index
-	 * @param obj
-	 * @return
-	 */
-	public Document set(int index, Document obj) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("set(int,Object)"));
-	}
-
-	/**
-	 * Add all documents in the collection to the end of the corpus. Documents with
-	 * a name that is already in the corpus are not added.
-	 * 
-	 * @param c
-	 *            a collection of documents
-	 * @return true if any document from the corpus was added.
-	 */
-	public boolean addAll(Collection c) {
-		boolean ret = false;
-		for (Object obj : c) {
-			if (obj instanceof Document) {
-				ret = ret || this.add((Document) obj);
-			}
-		}
-		return ret;
-	}
-
-	/**
-	 * Not implemented.
-	 * 
-	 * @param i
-	 * @param c
-	 * @return
-	 */
-	public boolean addAll(int i, Collection c) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("set(int,Object)"));
-	}
-
-	/**
-	 * This method is not implemented and throws a
-	 * gate.util.MethodNotImplementedException
-	 * 
-	 * @param c
-	 * @return
-	 */
-	public boolean containsAll(Collection c) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("containsAll(Collection)"));
-	}
-
-	protected void fireDocumentAdded(CorpusEvent e) {
-		for (CorpusListener listener : listeners) {
-			listener.documentAdded(e);
-		}
-	}
-
-	protected void fireDocumentRemoved(CorpusEvent e) {
-		for (CorpusListener listener : listeners) {
-			listener.documentRemoved(e);
-		}
+	@Override
+	public final boolean remove(Object o) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("remove(Object)"));
 	}
 
 	@Override
-	public void resourceLoaded(CreoleEvent e) {
+	public final boolean removeAll(Collection<?> c) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("removeAll(Collection)"));
 	}
 
 	@Override
-	public void resourceRenamed(Resource resource, String oldName, String newName) {
-		// if one of our documents gets renamed, rename it back and
-		// write an error message
-		if (resource instanceof Document) {
-			Document doc = (Document) resource;
-			if (loadedDocuments.containsValue(doc)) {
-				System.err.println("ERROR: documents from a virtual corpus cannot be renamed!");
-				doc.setName(oldName);
-			}
-		}
+	public final void clear() {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("clear()"));
 	}
 
 	@Override
-	public void resourceUnloaded(CreoleEvent e) {
-		Resource res = e.getResource();
-		if (res instanceof Document) {
-			Document doc = (Document) res;
-			// check if this document has actually been loaded by us
-			if (loadedDocuments.containsValue(doc)) {
-				unloadDocument(doc);
-			} // else: its not ours, ignore
-		} else if (res == this) {
-			// if this corpus object gets unloaded, what should we do with any
-			// of the documents which are currently loaded?
-			// TODO!!!!
-			// Also should we not do the cleanup in the cleanup code?
-			Gate.getCreoleRegister().removeCreoleListener(this);
-		}
+	public final Document remove(int index) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("remove(int)"));
 	}
 
-	/**
-	 * This method is not implemented and always throws a
-	 * MethodNotImplementedException.
-	 *
-	 *
-	 * @param i
-	 * @return
-	 */
 	@Override
 	public ListIterator<Document> listIterator(int i) {
 		throw new MethodNotImplementedException(notImplementedMessage("listIterator(int)"));
 	}
 
-	/**
-	 * This method is not implemented and always throws a
-	 * MethodNotImplementedException.
-	 *
-	 *
-	 * @param i
-	 * @return
-	 */
 	@Override
 	public ListIterator<Document> listIterator() {
 		throw new MethodNotImplementedException(notImplementedMessage("listIterator()"));
-	}
-
-	/**
-	 * This method is not implemented and always throws a
-	 * MethodNotImplementedException.
-	 * 
-	 * @param docObj
-	 * @return
-	 */
-	@Override
-	public int lastIndexOf(Object docObj) {
-		throw new MethodNotImplementedException(notImplementedMessage("lastIndexOf(Object)"));
-	}
-
-	/**
-	 * Check if the corpus is empty.
-	 *
-	 * @return true if the corpus is empty
-	 */
-	@Override
-	public boolean isEmpty() {
-		return (documentNames.isEmpty());
 	}
 
 	protected List<CorpusListener> listeners = new ArrayList<CorpusListener>();
@@ -525,18 +388,16 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		listeners.add(listener);
 	}
 
-	@Override
-	public void datastoreClosed(CreoleEvent ev) {
+	protected void fireDocumentAdded(CorpusEvent e) {
+		for (CorpusListener listener : listeners) {
+			listener.documentAdded(e);
+		}
 	}
 
-	@Override
-	public void datastoreCreated(CreoleEvent ev) {
-
+	protected void fireDocumentRemoved(CorpusEvent e) {
+		for (CorpusListener listener : listeners) {
+			listener.documentRemoved(e);
+		}
 	}
 
-	@Override
-	public void datastoreOpened(CreoleEvent ev) {
-
-	}
-
-} // abstract class VirtualCorpus
+}
