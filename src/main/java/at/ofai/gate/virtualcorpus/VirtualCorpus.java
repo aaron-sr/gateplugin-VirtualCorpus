@@ -34,11 +34,17 @@ import org.apache.log4j.Logger;
 
 import gate.Corpus;
 import gate.Document;
+import gate.Gate;
+import gate.Resource;
 import gate.creole.AbstractLanguageResource;
 import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.Optional;
 import gate.event.CorpusEvent;
 import gate.event.CorpusListener;
+import gate.event.CreoleEvent;
+import gate.event.CreoleListener;
+import gate.event.DocumentEvent;
+import gate.event.DocumentListener;
 import gate.persist.PersistenceException;
 import gate.util.GateRuntimeException;
 import gate.util.persistence.PersistenceManager;
@@ -58,8 +64,10 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	protected Boolean readonly;
 	protected Boolean immutable;
 
+	private DocumentListener documentListener = new VirtualCorpusDocumentListener(this);
+
 	@Optional
-	@CreoleParameter(comment = "If true, documents will never be saved", defaultValue = "true")
+	@CreoleParameter(comment = "If true, document content changes will not be saved and document names cannot be renamed", defaultValue = "true")
 	public void setReadonly(Boolean readonly) {
 		this.readonly = readonly;
 	}
@@ -69,7 +77,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Optional
-	@CreoleParameter(comment = "If true, documents cannot be added or removed to corpus", defaultValue = "true")
+	@CreoleParameter(comment = "If true, documents cannot be added or removed to the corpus", defaultValue = "true")
 	public void setImmutable(Boolean immutable) {
 		this.immutable = immutable;
 	}
@@ -81,16 +89,95 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	private List<String> documentNames = new ArrayList<String>();
 	private Map<String, Document> documents = new HashMap<String, Document>();
 
-	protected void initDocuments(List<String> documentNames) {
-		for (int i = 0; i < documentNames.size(); i++) {
-			String docName = documentNames.get(i);
-			this.documentNames.add(docName);
+	protected void initDocuments(List<String> names) {
+		for (int i = 0; i < names.size(); i++) {
+			String name = names.get(i);
+			this.documentNames.add(name);
 		}
+		Gate.getCreoleRegister().addCreoleListener(new VirtualCorpusCreoleListener(this));
+	}
+
+	private static class VirtualCorpusCreoleListener implements CreoleListener {
+
+		private VirtualCorpus corpus;
+
+		public VirtualCorpusCreoleListener(VirtualCorpus corpus) {
+			this.corpus = corpus;
+		}
+
+		@Override
+		public void resourceUnloaded(CreoleEvent e) {
+			Resource resource = e.getResource();
+			if (corpus.contains(resource)) {
+				Document document = (Document) resource;
+				corpus.unloadDocument(document);
+			} else if (resource == this) {
+				Gate.getCreoleRegister().removeCreoleListener(this);
+			}
+		}
+
+		@Override
+		public void resourceRenamed(Resource resource, String oldName, String newName) {
+			if (corpus.contains(resource)) {
+				Document document = (Document) resource;
+				if (corpus.readonly) {
+					document.setName(oldName);
+				} else {
+					corpus.renameDocument(document, oldName, newName);
+				}
+			}
+		}
+
+		@Override
+		public void resourceLoaded(CreoleEvent e) {
+
+		}
+
+		@Override
+		public void datastoreOpened(CreoleEvent e) {
+
+		}
+
+		@Override
+		public void datastoreCreated(CreoleEvent e) {
+
+		}
+
+		@Override
+		public void datastoreClosed(CreoleEvent e) {
+
+		}
+	}
+
+	private static class VirtualCorpusDocumentListener implements DocumentListener {
+
+		private VirtualCorpus corpus;
+
+		public VirtualCorpusDocumentListener(VirtualCorpus corpus) {
+			this.corpus = corpus;
+		}
+
+		@Override
+		public void annotationSetAdded(DocumentEvent e) {
+
+		}
+
+		@Override
+		public void annotationSetRemoved(DocumentEvent e) {
+
+		}
+
+		@Override
+		public void contentEdited(DocumentEvent e) {
+			Document document = (Document) e.getSource();
+			corpus.updateDocument(document);
+		}
+
 	}
 
 	protected abstract void createDocument(Document document);
 
-	protected abstract Document readDocument(String documentName);
+	protected abstract Document readDocument(String name);
 
 	protected abstract void updateDocument(Document document);
 
@@ -108,20 +195,21 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public void unloadDocument(Document doc) {
-		String docName = doc.getName();
-		logger.debug("DirectoryCorpus: called unloadDocument: " + docName);
-		int index = documentNames.indexOf(docName);
+	public void unloadDocument(Document document) {
+		String name = document.getName();
+		logger.debug("DirectoryCorpus: called unloadDocument: " + name);
+		int index = documentNames.indexOf(name);
 		if (index == -1) {
-			throw new RuntimeException("Document " + docName + " is not contained in corpus " + this.getName());
+			throw new RuntimeException("Document " + name + " is not contained in corpus " + this.getName());
 		}
 		if (isDocumentLoaded(index)) {
 			try {
-				doc.sync();
+				document.sync();
 			} catch (Exception ex) {
-				throw new GateRuntimeException("Problem syncing document " + doc.getName(), ex);
+				throw new GateRuntimeException("Problem syncing document " + document.getName(), ex);
 			}
-			documents.remove(docName);
+			documents.remove(name);
+			document.removeDocumentListener(documentListener);
 		}
 	}
 
@@ -142,19 +230,20 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			throw new IndexOutOfBoundsException(
 					"Index " + index + " not in corpus " + this.getName() + " of size " + documentNames.size());
 		}
-		String docName = documentNames.get(index);
+		String name = documentNames.get(index);
 		if (isDocumentLoaded(index)) {
-			Document doc = documents.get(docName);
-			return doc;
+			return documents.get(name);
 		}
-		Document doc;
 		try {
-			doc = readDocument(docName);
+			Document document = readDocument(name);
+			documents.put(name, document);
+			if (!readonly) {
+				document.addDocumentListener(documentListener);
+			}
+			return document;
 		} catch (Exception ex) {
-			throw new GateRuntimeException("Problem retrieving document data for " + docName, ex);
+			throw new GateRuntimeException("Problem retrieving document data for " + name, ex);
 		}
-		documents.put(docName, doc);
-		return doc;
 	}
 
 	@Override
@@ -163,21 +252,21 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public final int indexOf(Object docObj) {
-		if (docObj instanceof Document) {
-			Document doc = (Document) docObj;
-			String docName = doc.getName();
-			return documentNames.indexOf(docName);
+	public final int indexOf(Object object) {
+		if (object instanceof Document) {
+			Document document = (Document) object;
+			String name = document.getName();
+			return documentNames.indexOf(name);
 		}
 		return -1;
 	}
 
 	@Override
-	public final boolean contains(Object docObj) {
-		if (docObj instanceof Document) {
-			Document doc = (Document) docObj;
-			String docName = doc.getName();
-			return documentNames.indexOf(docName) != -1;
+	public final boolean contains(Object object) {
+		if (object instanceof Document) {
+			Document document = (Document) object;
+			String name = document.getName();
+			return documentNames.indexOf(name) != -1;
 		}
 		return false;
 	}
@@ -259,11 +348,11 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public int lastIndexOf(Object docObj) {
-		if (docObj instanceof Document) {
-			Document doc = (Document) docObj;
-			String docName = doc.getName();
-			return documentNames.lastIndexOf(docName);
+	public int lastIndexOf(Object object) {
+		if (object instanceof Document) {
+			Document document = (Document) object;
+			String name = document.getName();
+			return documentNames.lastIndexOf(name);
 		}
 		return -1;
 	}
@@ -301,7 +390,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		Document oldDocument = get(index);
 		documentNames.set(index, document.getName());
 		documents.put(document.getName(), document);
-		updateDocument(document);
+		fireDocumentRemoved(index, oldDocument);
+		fireDocumentAdded(index, document);
 		return oldDocument;
 	}
 
@@ -318,13 +408,13 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		if (immutable) {
 			throw new UnsupportedOperationException("this corpus is immutable");
 		}
-		List<String> newDocumentNames = new ArrayList<>();
+		List<String> newnames = new ArrayList<>();
 		Map<String, Document> newDocuments = new HashMap<>();
 		for (Document document : documents) {
-			newDocumentNames.add(document.getName());
+			newnames.add(document.getName());
 			newDocuments.put(document.getName(), document);
 		}
-		boolean addAll = documentNames.addAll(newDocumentNames);
+		boolean addAll = documentNames.addAll(newnames);
 		this.documents.putAll(newDocuments);
 		for (Document document : newDocuments.values()) {
 			createDocument(document);
@@ -338,19 +428,19 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		if (immutable) {
 			throw new UnsupportedOperationException("this corpus is immutable");
 		}
-		List<String> documentNames = new ArrayList<>();
+		List<String> names = new ArrayList<>();
 		Map<Document, Integer> indexes = new HashMap<>();
 		for (Object object : this) {
 			if (object instanceof Document && this.contains(object)) {
 				Document document = (Document) object;
-				documentNames.add(document.getName());
+				names.add(document.getName());
 				indexes.put(document, this.indexOf(document));
 			}
 		}
-		boolean retainAll = this.documentNames.retainAll(documentNames);
-		for (String documentName : this.documents.keySet()) {
-			if (!documentNames.contains(documentName)) {
-				Document document = this.documents.remove(documentName);
+		boolean retainAll = this.documentNames.retainAll(names);
+		for (String name : this.documents.keySet()) {
+			if (!names.contains(name)) {
+				Document document = this.documents.remove(name);
 				this.deleteDocument(document);
 				fireDocumentRemoved(indexes.remove(document), document);
 			}
@@ -383,17 +473,17 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			throw new UnsupportedOperationException("this corpus is immutable");
 		}
 		List<Document> documents = new ArrayList<>();
-		List<String> documentNames = new ArrayList<>();
+		List<String> names = new ArrayList<>();
 		Map<Document, Integer> indexes = new HashMap<>();
 		for (Object object : collection) {
 			if (object instanceof Document && this.contains(object)) {
 				Document document = (Document) object;
 				documents.add(document);
-				documentNames.add(document.getName());
+				names.add(document.getName());
 				indexes.put(document, this.indexOf(document));
 			}
 		}
-		boolean removeAll = this.documentNames.removeAll(documentNames);
+		boolean removeAll = this.documentNames.removeAll(names);
 		for (Document document : documents) {
 			this.documents.remove(document.getName());
 			deleteDocument(document);
@@ -545,8 +635,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public long populate(URL url, String docRoot, String encoding, int nrdocs, String docNamePrefix, String mimetype,
-			boolean includeroot) {
+	public long populate(URL url, String docRoot, String encoding, int nrdocs, String docNadocumentNamex,
+			String mimetype, boolean includeroot) {
 		throw new gate.util.MethodNotImplementedException(
 				notImplementedMessage("populate(URL, String, String, int, String, String, boolean"));
 	}
