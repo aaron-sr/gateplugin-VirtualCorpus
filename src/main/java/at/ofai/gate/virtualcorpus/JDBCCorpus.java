@@ -282,21 +282,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		}
 	}
 
-	protected void saveDocument(Document doc) {
-		if (getReadonly()) {
-			return;
-		}
-		String docContent = doc.toXml();
-		String docName = doc.getName();
-		try {
-			updateContentStatement.setString(2, docName);
-			updateContentStatement.setString(1, docContent);
-			updateContentStatement.execute();
-		} catch (Exception ex) {
-			throw new GateRuntimeException("Error when trying to update database row for document doc.getName()", ex);
-		}
-	}
-
 	@Override
 	protected Document readDocument(String docName) {
 		try {
@@ -325,6 +310,35 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		} catch (Exception ex) {
 			throw new GateRuntimeException("Exception creating the document", ex);
 		}
+	}
+
+	@Override
+	protected void createDocument(Document document) {
+
+	}
+
+	@Override
+	protected void updateDocument(Document document) {
+		String docContent = document.toXml();
+		String docName = document.getName();
+		try {
+			updateContentStatement.setString(2, docName);
+			updateContentStatement.setString(1, docContent);
+			updateContentStatement.execute();
+		} catch (Exception ex) {
+			throw new GateRuntimeException("Error when trying to update database row for document doc.getName()", ex);
+		}
+
+	}
+
+	@Override
+	protected void deleteDocument(Document document) {
+
+	}
+
+	@Override
+	protected void renameDocument(Document document, String oldName, String newName) {
+
 	}
 
 }

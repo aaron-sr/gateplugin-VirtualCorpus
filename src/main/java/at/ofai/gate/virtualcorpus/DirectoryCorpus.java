@@ -236,35 +236,6 @@ public class DirectoryCorpus extends VirtualCorpus {
 		return this;
 	}
 
-	protected void saveDocument(Document doc) {
-		if (getReadonly()) {
-			return;
-		}
-		String docName = doc.getName();
-		// get the extension and then look up the document exporter for that
-		// extension which will be used to do the actual saving.
-		int extDotPos = docName.lastIndexOf(".");
-		if (extDotPos <= 0) {
-			throw new GateRuntimeException(
-					"Did not find a file name extensions when trying to save document " + docName);
-		}
-		String ext = docName.substring(extDotPos + 1);
-		if (ext.isEmpty()) {
-			throw new GateRuntimeException("Encountered empty extension when trying to save document " + docName);
-		}
-		DocumentExporter de = extension2Exporter.get(ext);
-		logger.info("DirectoryCorpus/saveDocument exit is " + ext + " exporter " + de);
-		File docFile = new File(backingDirectoryFile, docName);
-		try {
-			logger.info(
-					"DirectoryCorpus/saveDocument trying to save document " + doc.getName() + " using exporter " + de);
-			de.export(doc, docFile);
-			logger.info("DirectoryCorpus/saveDocument saved: " + doc.getName());
-		} catch (IOException ex) {
-			throw new GateRuntimeException("Could not save file: " + docFile, ex);
-		}
-	}
-
 	@Override
 	protected Document readDocument(String docName) {
 		File docFile = new File(backingDirectoryFile, docName);
@@ -281,6 +252,52 @@ public class DirectoryCorpus extends VirtualCorpus {
 		} catch (ResourceInstantiationException ex) {
 			throw new GateRuntimeException("Could not create Document from file " + docFile, ex);
 		}
+	}
+
+	@Override
+	protected void createDocument(Document document) {
+
+	}
+
+	@Override
+	protected void updateDocument(Document document) {
+		if (getReadonly()) {
+			return;
+		}
+		String docName = document.getName();
+		// get the extension and then look up the document exporter for that
+		// extension which will be used to do the actual saving.
+		int extDotPos = docName.lastIndexOf(".");
+		if (extDotPos <= 0) {
+			throw new GateRuntimeException(
+					"Did not find a file name extensions when trying to save document " + docName);
+		}
+		String ext = docName.substring(extDotPos + 1);
+		if (ext.isEmpty()) {
+			throw new GateRuntimeException("Encountered empty extension when trying to save document " + docName);
+		}
+		DocumentExporter de = extension2Exporter.get(ext);
+		logger.info("DirectoryCorpus/saveDocument exit is " + ext + " exporter " + de);
+		File docFile = new File(backingDirectoryFile, docName);
+		try {
+			logger.info("DirectoryCorpus/saveDocument trying to save document " + document.getName()
+					+ " using exporter " + de);
+			de.export(document, docFile);
+			logger.info("DirectoryCorpus/saveDocument saved: " + document.getName());
+		} catch (IOException ex) {
+			throw new GateRuntimeException("Could not save file: " + docFile, ex);
+		}
+
+	}
+
+	@Override
+	protected void deleteDocument(Document document) {
+
+	}
+
+	@Override
+	protected void renameDocument(Document document, String oldName, String newName) {
+
 	}
 
 }

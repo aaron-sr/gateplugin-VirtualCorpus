@@ -41,7 +41,6 @@ import gate.event.CorpusEvent;
 import gate.event.CorpusListener;
 import gate.persist.PersistenceException;
 import gate.util.GateRuntimeException;
-import gate.util.MethodNotImplementedException;
 import gate.util.persistence.PersistenceManager;
 
 public abstract class VirtualCorpus extends AbstractLanguageResource implements Corpus {
@@ -56,8 +55,11 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 	}
 
+	protected Boolean readonly;
+	protected Boolean immutable;
+
 	@Optional
-	@CreoleParameter(comment = "If true, documents will never be saved", defaultValue = "false")
+	@CreoleParameter(comment = "If true, documents will never be saved", defaultValue = "true")
 	public void setReadonly(Boolean readonly) {
 		this.readonly = readonly;
 	}
@@ -66,65 +68,43 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		return this.readonly;
 	}
 
-	protected Boolean readonly = true;
-
-	@Override
-	public void populate(URL directory, FileFilter filter, String encoding, boolean recurseDirectories) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("populate(URL, FileFilter, boolean)"));
+	@Optional
+	@CreoleParameter(comment = "If true, documents cannot be added or removed to corpus", defaultValue = "true")
+	public void setImmutable(Boolean immutable) {
+		this.immutable = immutable;
 	}
 
-	@Override
-	public long populate(URL url, String docRoot, String encoding, int nrdocs, String docNamePrefix, String mimetype,
-			boolean includeroot) {
-		throw new gate.util.MethodNotImplementedException(
-				notImplementedMessage("populate(URL, String, String, int, String, String, boolean"));
-	}
-
-	@Override
-	public void populate(URL directory, FileFilter filter, String encoding, String mimeType,
-			boolean recurseDirectories) {
-		throw new gate.util.MethodNotImplementedException(
-				notImplementedMessage("populate(URL, FileFilter, String, String, boolean"));
-	}
-
-	public long populate(URL trecFile, String encoding, int numberOfDocumentsToExtract) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("populate(URL, String, int"));
-	}
-
-	protected String notImplementedMessage(String methodName) {
-		return "Method " + methodName + " not supported for VirtualCorpus corpus " + this.getName() + " of class "
-				+ this.getClass();
+	public Boolean getImmutable() {
+		return immutable;
 	}
 
 	private List<String> documentNames = new ArrayList<String>();
-	private List<Boolean> isLoadeds = new ArrayList<Boolean>();
-	private Map<String, Document> loadedDocuments = new HashMap<String, Document>();
+	private Map<String, Document> documents = new HashMap<String, Document>();
 
 	protected void initDocuments(List<String> documentNames) {
 		for (int i = 0; i < documentNames.size(); i++) {
 			String docName = documentNames.get(i);
 			this.documentNames.add(docName);
-			this.isLoadeds.add(false);
 		}
 	}
 
-	protected abstract Document readDocument(String docName);
+	protected abstract void createDocument(Document document);
+
+	protected abstract Document readDocument(String documentName);
+
+	protected abstract void updateDocument(Document document);
+
+	protected abstract void deleteDocument(Document document);
+
+	protected abstract void renameDocument(Document document, String oldName, String newName);
 
 	@Override
 	public boolean isDocumentLoaded(int index) {
-		if (index < 0 || index >= isLoadeds.size()) {
-			throw new GateRuntimeException(
-					"Document number " + index + " not in corpus " + this.getName() + " of size " + isLoadeds.size());
+		if (index < 0 || index >= documentNames.size()) {
+			throw new GateRuntimeException("Document number " + index + " not in corpus " + this.getName() + " of size "
+					+ documentNames.size());
 		}
-		return isLoadeds.get(index);
-	}
-
-	public boolean isDocumentLoaded(Document doc) {
-		String docName = doc.getName();
-		if (!documentNames.contains(docName)) {
-			throw new GateRuntimeException("Document " + docName + " is not contained in corpus " + this.getName());
-		}
-		return isDocumentLoaded(documentNames.indexOf(docName));
+		return documents.containsKey(documentNames.get(index));
 	}
 
 	@Override
@@ -141,8 +121,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			} catch (Exception ex) {
 				throw new GateRuntimeException("Problem syncing document " + doc.getName(), ex);
 			}
-			loadedDocuments.remove(docName);
-			isLoadeds.set(index, false);
+			documents.remove(docName);
 		}
 	}
 
@@ -165,7 +144,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 		String docName = documentNames.get(index);
 		if (isDocumentLoaded(index)) {
-			Document doc = loadedDocuments.get(docName);
+			Document doc = documents.get(docName);
 			return doc;
 		}
 		Document doc;
@@ -174,8 +153,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		} catch (Exception ex) {
 			throw new GateRuntimeException("Problem retrieving document data for " + docName, ex);
 		}
-		loadedDocuments.put(docName, doc);
-		isLoadeds.set(index, true);
+		documents.put(docName, doc);
 		return doc;
 	}
 
@@ -216,7 +194,11 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public List<Document> subList(int i1, int i2) {
-		throw new MethodNotImplementedException(notImplementedMessage("subList(int,int)"));
+		List<Document> subList = new ArrayList<>();
+		for (int i = i1; i < i2; i++) {
+			subList.add(get(i));
+		}
+		return subList;
 	}
 
 	@Override
@@ -269,7 +251,10 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 		@Override
 		public void remove() {
-			throw new MethodNotImplementedException();
+			if (corpus.immutable) {
+				throw new UnsupportedOperationException("this corpus is immutable");
+			}
+			corpus.remove(nextIndex);
 		}
 	}
 
@@ -289,63 +274,243 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public final boolean add(Document e) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("add(Object)"));
+	public final boolean add(Document document) {
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		add(size(), document);
+		return true;
 	}
 
 	@Override
-	public final void add(int index, Document docObj) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("add(int,Object)"));
+	public final void add(int index, Document document) {
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		documentNames.add(index, document.getName());
+		documents.put(document.getName(), document);
+		createDocument(document);
+		fireDocumentAdded(index, document);
 	}
 
 	@Override
-	public final Document set(int index, Document obj) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("set(int,Object)"));
+	public final Document set(int index, Document document) {
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		Document oldDocument = get(index);
+		documentNames.set(index, document.getName());
+		documents.put(document.getName(), document);
+		updateDocument(document);
+		return oldDocument;
 	}
 
 	@Override
-	public final boolean addAll(Collection<? extends Document> c) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("addAll(Collection)"));
+	public final boolean addAll(Collection<? extends Document> documents) {
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		return addAll(size(), documents);
 	}
 
 	@Override
-	public final boolean addAll(int i, Collection<? extends Document> c) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("addAll(int,Object)"));
+	public final boolean addAll(int i, Collection<? extends Document> documents) {
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		List<String> newDocumentNames = new ArrayList<>();
+		Map<String, Document> newDocuments = new HashMap<>();
+		for (Document document : documents) {
+			newDocumentNames.add(document.getName());
+			newDocuments.put(document.getName(), document);
+		}
+		boolean addAll = documentNames.addAll(newDocumentNames);
+		this.documents.putAll(newDocuments);
+		for (Document document : newDocuments.values()) {
+			createDocument(document);
+			fireDocumentAdded(this.indexOf(document), document);
+		}
+		return addAll;
 	}
 
 	@Override
-	public final boolean retainAll(Collection<?> c) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("retainAll(Collection)"));
+	public final boolean retainAll(Collection<?> collection) {
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		List<String> documentNames = new ArrayList<>();
+		Map<Document, Integer> indexes = new HashMap<>();
+		for (Object object : this) {
+			if (object instanceof Document && this.contains(object)) {
+				Document document = (Document) object;
+				documentNames.add(document.getName());
+				indexes.put(document, this.indexOf(document));
+			}
+		}
+		boolean retainAll = this.documentNames.retainAll(documentNames);
+		for (String documentName : this.documents.keySet()) {
+			if (!documentNames.contains(documentName)) {
+				Document document = this.documents.remove(documentName);
+				this.deleteDocument(document);
+				fireDocumentRemoved(indexes.remove(document), document);
+			}
+		}
+		return retainAll;
 	}
 
 	@Override
-	public final boolean remove(Object o) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("remove(Object)"));
+	public final boolean remove(Object object) {
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		if (object instanceof Document) {
+			Document document = (Document) object;
+			int index = this.indexOf(document);
+			boolean remove = documentNames.remove(document.getName());
+			documents.remove(document.getName());
+			if (remove) {
+				deleteDocument(document);
+				fireDocumentRemoved(index, document);
+			}
+			return remove;
+		}
+		return false;
 	}
 
 	@Override
-	public final boolean removeAll(Collection<?> c) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("removeAll(Collection)"));
+	public final boolean removeAll(Collection<?> collection) {
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		List<Document> documents = new ArrayList<>();
+		List<String> documentNames = new ArrayList<>();
+		Map<Document, Integer> indexes = new HashMap<>();
+		for (Object object : collection) {
+			if (object instanceof Document && this.contains(object)) {
+				Document document = (Document) object;
+				documents.add(document);
+				documentNames.add(document.getName());
+				indexes.put(document, this.indexOf(document));
+			}
+		}
+		boolean removeAll = this.documentNames.removeAll(documentNames);
+		for (Document document : documents) {
+			this.documents.remove(document.getName());
+			deleteDocument(document);
+			fireDocumentRemoved(indexes.remove(document), document);
+		}
+		return removeAll;
 	}
 
 	@Override
 	public final void clear() {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("clear()"));
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		Map<Document, Integer> indexes = new HashMap<>();
+		for (Document document : this.documents.values()) {
+			indexes.put(document, this.indexOf(document));
+		}
+		this.documentNames.clear();
+		this.documents.clear();
+		for (Document document : indexes.keySet()) {
+			deleteDocument(document);
+			fireDocumentRemoved(indexes.get(document), document);
+		}
 	}
 
 	@Override
 	public final Document remove(int index) {
-		throw new gate.util.MethodNotImplementedException(notImplementedMessage("remove(int)"));
+		if (immutable) {
+			throw new UnsupportedOperationException("this corpus is immutable");
+		}
+		Document document = get(index);
+		remove(document);
+		return document;
 	}
 
 	@Override
 	public ListIterator<Document> listIterator(int i) {
-		throw new MethodNotImplementedException(notImplementedMessage("listIterator(int)"));
+		return new VirtualCorpusListIterator(this, i);
 	}
 
 	@Override
 	public ListIterator<Document> listIterator() {
-		throw new MethodNotImplementedException(notImplementedMessage("listIterator()"));
+		return listIterator(0);
+	}
+
+	private static class VirtualCorpusListIterator implements ListIterator<Document> {
+
+		private VirtualCorpus corpus;
+		private int nextIndex;
+
+		public VirtualCorpusListIterator(VirtualCorpus corpus, int nextIndex) {
+			this.corpus = corpus;
+			this.nextIndex = nextIndex;
+		}
+
+		@Override
+		public boolean hasNext() {
+			return (corpus.documentNames.size() > nextIndex);
+		}
+
+		@Override
+		public Document next() {
+			if (hasNext()) {
+				return corpus.get(nextIndex++);
+			} else {
+				return null;
+			}
+		}
+
+		@Override
+		public boolean hasPrevious() {
+			return nextIndex > 0 && !corpus.documentNames.isEmpty();
+		}
+
+		@Override
+		public Document previous() {
+			if (hasPrevious()) {
+				return corpus.get(--nextIndex);
+			} else {
+				return null;
+			}
+		}
+
+		@Override
+		public int nextIndex() {
+			return nextIndex + 1;
+		}
+
+		@Override
+		public int previousIndex() {
+			return nextIndex - 1;
+		}
+
+		@Override
+		public void remove() {
+			if (corpus.immutable) {
+				throw new UnsupportedOperationException("this corpus is immutable");
+			}
+			corpus.remove(nextIndex);
+		}
+
+		@Override
+		public void set(Document document) {
+			if (corpus.immutable) {
+				throw new UnsupportedOperationException("this corpus is immutable");
+			}
+			corpus.set(nextIndex, document);
+		}
+
+		@Override
+		public void add(Document document) {
+			if (corpus.immutable) {
+				throw new UnsupportedOperationException("this corpus is immutable");
+			}
+			corpus.add(nextIndex, document);
+		}
+
 	}
 
 	protected List<CorpusListener> listeners = new ArrayList<CorpusListener>();
@@ -360,16 +525,46 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		listeners.add(listener);
 	}
 
-	protected void fireDocumentAdded(CorpusEvent e) {
+	protected void fireDocumentAdded(int index, Document document) {
+		CorpusEvent event = new CorpusEvent(this, document, index, CorpusEvent.DOCUMENT_ADDED);
 		for (CorpusListener listener : listeners) {
-			listener.documentAdded(e);
+			listener.documentAdded(event);
 		}
 	}
 
-	protected void fireDocumentRemoved(CorpusEvent e) {
+	protected void fireDocumentRemoved(int index, Document document) {
+		CorpusEvent event = new CorpusEvent(this, document, index, CorpusEvent.DOCUMENT_REMOVED);
 		for (CorpusListener listener : listeners) {
-			listener.documentRemoved(e);
+			listener.documentAdded(event);
 		}
+	}
+
+	@Override
+	public void populate(URL directory, FileFilter filter, String encoding, boolean recurseDirectories) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("populate(URL, FileFilter, boolean)"));
+	}
+
+	@Override
+	public long populate(URL url, String docRoot, String encoding, int nrdocs, String docNamePrefix, String mimetype,
+			boolean includeroot) {
+		throw new gate.util.MethodNotImplementedException(
+				notImplementedMessage("populate(URL, String, String, int, String, String, boolean"));
+	}
+
+	@Override
+	public void populate(URL directory, FileFilter filter, String encoding, String mimeType,
+			boolean recurseDirectories) {
+		throw new gate.util.MethodNotImplementedException(
+				notImplementedMessage("populate(URL, FileFilter, String, String, boolean"));
+	}
+
+	public long populate(URL trecFile, String encoding, int numberOfDocumentsToExtract) {
+		throw new gate.util.MethodNotImplementedException(notImplementedMessage("populate(URL, String, int"));
+	}
+
+	protected String notImplementedMessage(String methodName) {
+		return "Method " + methodName + " not supported for VirtualCorpus corpus " + this.getName() + " of class "
+				+ this.getClass();
 	}
 
 }
