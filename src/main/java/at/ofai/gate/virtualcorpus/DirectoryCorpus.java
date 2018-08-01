@@ -26,14 +26,11 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.log4j.Logger;
 
 import gate.Document;
@@ -49,28 +46,10 @@ import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
 import gate.util.Files;
-import gate.util.GateException;
 import gate.util.GateRuntimeException;
 
 /**
- * A Corpus LR that mirrors files in a directory. In the default configuration,
- * just the <code>directoryURL</code> parameter is specified at creation and all
- * files that have a file extension of ".xml" and are not hidden are accessible
- * as documents through that corpus and automatically written back to the
- * directory when sync'ed or when unloaded (which does an implicit sync). If the
- * parameter <code>outDirectoryURL</code> is also specified, the corpus reflects
- * all the files from the <code>directoryURL</code> directory but writes any
- * changed documents into the directory <code>outDirectoryURL</code>. If the
- * parameter <code>saveDocuments</code> is set to false, nothing is ever written
- * to either of the directories.
- * <p>
- * The main purpose of this Corpus implementation is that through it a serial
- * controller can directly read and write from files stored in a directory. This
- * makes it much easier to share working pipelines between pipeline developers,
- * especially when the pipeline files are checked into SCS.
- * <p>
- * Documents will always get saved to either the original file or to a file in
- * the outDocumentURL directory whenever the document is synced or unloaded.
+ * A Corpus LR that mirrors files in a directory.
  * <p>
  * NOTE: If you use the "Save as XML" option from the LR's context menu, be
  * careful not specify the directory where the corpus saves documents as the
@@ -85,7 +64,12 @@ public class DirectoryCorpus extends VirtualCorpus {
 	private static final long serialVersionUID = -8485161260415382902L;
 	private static final Logger logger = Logger.getLogger(DirectoryCorpus.class);
 
-	protected File backingDirectoryFile;
+	protected URL directoryURL = null;
+	protected List<String> extensions;
+	protected Boolean recursive;
+	protected Boolean hidden;
+
+	private File directory;
 
 	@CreoleParameter(comment = "The directory URL where files will be read from")
 	public void setDirectoryURL(URL dirURL) {
@@ -96,10 +80,8 @@ public class DirectoryCorpus extends VirtualCorpus {
 		return this.directoryURL;
 	}
 
-	protected URL directoryURL = null;
-
 	@Optional
-	@CreoleParameter(comment = "A list of file extensions which will be loaded into the corpus. If not specified, all supported file extensions. ")
+	@CreoleParameter(comment = "A list of file extensions which will be loaded into the corpus. If not specified, all supported file extensions.")
 	public void setExtensions(List<String> extensions) {
 		this.extensions = extensions;
 	}
@@ -108,126 +90,71 @@ public class DirectoryCorpus extends VirtualCorpus {
 		return extensions;
 	}
 
-	protected List<String> extensions;
-
 	@Optional
 	@CreoleParameter(comment = "Recursively get files from the directory", defaultValue = "false")
-	public void setRecurseDirectory(Boolean value) {
-		this.recurseDirectory = value;
+	public void setRecursive(Boolean value) {
+		this.recursive = value;
 	}
 
-	public Boolean getRecurseDirectory() {
-		return recurseDirectory;
+	public Boolean getRecursive() {
+		return recursive;
 	}
 
-	protected Boolean recurseDirectory;
+	@Optional
+	@CreoleParameter(comment = "Get hidden files from the directory", defaultValue = "false")
+	public void setHidden(Boolean hidden) {
+		this.hidden = hidden;
+	}
 
-	Map<String, DocumentExporter> extension2Exporter = new HashMap<String, DocumentExporter>();
+	public Boolean getHidden() {
+		return hidden;
+	}
 
-	/**
-	 * Initializes the DirectoryCorpus LR
-	 * 
-	 * @return
-	 * @throws ResourceInstantiationException
-	 */
 	@Override
 	public Resource init() throws ResourceInstantiationException {
 		logger.info("DirectoryCorpus: calling init");
+
+		for (String extension : extensions) {
+			if (!DocumentFormat.getSupportedFileSuffixes().contains(extension)) {
+				throw new ResourceInstantiationException(
+						"cannot read file extension " + extension + ", no DocumentFormat available");
+			}
+			if (!readonly && getExporterForExtension(extension) == null) {
+				throw new ResourceInstantiationException(
+						"cannot write file extension " + extension + ", no DocumentExporter available");
+			}
+		}
+
 		if (directoryURL == null) {
 			throw new ResourceInstantiationException("directoryURL must be set");
 		}
-		// first of all, create a map that contains all the supported extensions
-		// as keys and the corresponding documente exporter as value.
 
-		// First, get all the supported extensions for reading files
-		Set<String> readExtensions = DocumentFormat.getSupportedFileSuffixes();
-		logger.info("DirectoryCorpus/init readExtensions=" + readExtensions);
-		Set<String> supportedExtensions = new HashSet<String>();
-
-		// if we also want to write, we have to limit the supported extensions
-		// to those where we have an exporter and also we need to remember which
-		// exporter supports which extensions
-		if (!getReadonly()) {
-			List<Resource> des = null;
-			try {
-				// Now get all the Document exporters
-				des = Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter");
-			} catch (GateException ex) {
-				throw new ResourceInstantiationException("Could not get the document exporters", ex);
-			}
-			for (Resource r : des) {
-				DocumentExporter d = (DocumentExporter) r;
-				if (readExtensions.contains(d.getDefaultExtension())) {
-					extension2Exporter.put(d.getDefaultExtension(), d);
-					supportedExtensions.add(d.getDefaultExtension());
-				}
-			}
-		} else {
-			supportedExtensions.addAll(readExtensions);
-		}
-		logger.info("DirectoryCorpus/init supportedExtensions=" + readExtensions);
-
-		// now check if an extension list was specified by the user. If no, nothing
-		// needs to be done. If yes, remove all the extensions from the
-		// extnesion2Exporter
-		// map which were not specified and warn about all the extensions specified
-		// for which we do not have an entry. Also remove them from the
-		// supportedExtensions set
-		if (getExtensions() != null && !getExtensions().isEmpty()) {
-			logger.info("DirectoryCorpu/init getExtgension is not empty: " + getExtensions());
-			for (String ext : getExtensions()) {
-				if (!supportedExtensions.contains(ext)) {
-					logger.warn("DirectoryCorpus warning: extension is not supported: " + ext);
-				}
-			}
-			// now remove all the extensions which are not specified
-			Iterator<String> it = supportedExtensions.iterator();
-			while (it.hasNext()) {
-				String ext = it.next();
-				logger.info("DirectoryCorpus/init checking supported extension: " + ext);
-				if (!getExtensions().contains(ext)) {
-					logger.info("DirectoryCorpus/init removing extension: " + ext);
-					it.remove();
-					extension2Exporter.remove(ext);
-				}
-			}
-		}
-		logger.info("DirectoryCorpus/init supportedExtensions after parms: " + supportedExtensions);
-		logger.info("DirectoryCorpus/init exporter map: " + extension2Exporter);
-
-		if (supportedExtensions.isEmpty()) {
-			throw new ResourceInstantiationException(
-					"DirectoryCorpus could not be created, no file format supported or loaded");
-		}
-
-		backingDirectoryFile = Files.fileFromURL(directoryURL);
 		try {
-			backingDirectoryFile = backingDirectoryFile.getCanonicalFile();
-		} catch (IOException ex) {
-			throw new ResourceInstantiationException("Cannot get canonical file for " + backingDirectoryFile, ex);
-		}
-		if (!backingDirectoryFile.isDirectory()) {
-			throw new ResourceInstantiationException("Not a directory " + backingDirectoryFile);
+			directory = Files.fileFromURL(directoryURL).getCanonicalFile();
+		} catch (Exception e) {
+			throw new ResourceInstantiationException("directoryURL is not a valid file url");
 		}
 
-		Iterator<File> fileIt = FileUtils.iterateFiles(backingDirectoryFile, supportedExtensions.toArray(new String[0]),
-				getRecurseDirectory());
+		if (!directory.isDirectory()) {
+			throw new ResourceInstantiationException("Not a directory " + directory);
+		}
+
+		String[] supportedExtensions = !extensions.isEmpty() ? extensions.toArray(new String[0])
+				: DocumentFormat.getSupportedFileSuffixes().toArray(new String[0]);
+
 		List<String> documentNames = new ArrayList<>();
-		while (fileIt.hasNext()) {
-			File file = fileIt.next();
-			// if recursion was specified, we need to get the relative file path
-			// relative to the root directory. This is done by getting the canonical
-			// full path name for both the directory and the file and then
-			// relativizing the path.
+		Iterator<File> iterator = FileUtils.iterateFiles(directory, supportedExtensions, recursive);
+		while (iterator.hasNext()) {
+			File file = iterator.next();
 			String filename = file.getName();
-			if (!file.isHidden()) {
-				if (getRecurseDirectory()) {
+			if (hidden || !file.isHidden()) {
+				if (recursive) {
 					try {
 						file = file.getCanonicalFile();
-					} catch (IOException ex) {
+					} catch (IOException e) {
 						throw new ResourceInstantiationException("Could not get canonical path for " + file);
 					}
-					filename = backingDirectoryFile.toURI().relativize(file.toURI()).getPath();
+					filename = directory.toURI().relativize(file.toURI()).getPath();
 				}
 				documentNames.add(filename);
 			}
@@ -236,68 +163,78 @@ public class DirectoryCorpus extends VirtualCorpus {
 		return this;
 	}
 
-	@Override
-	protected Document readDocument(String docName) {
-		File docFile = new File(backingDirectoryFile, docName);
-		URL docURL;
+	protected DocumentExporter getExporterForExtension(String fileExtension) {
 		try {
-			docURL = docFile.toURI().toURL();
-		} catch (MalformedURLException ex) {
-			throw new GateRuntimeException("Could not create URL for document name " + docName, ex);
+			for (Resource resource : Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter")) {
+				DocumentExporter exporter = (DocumentExporter) resource;
+				if (exporter.getDefaultExtension().contentEquals(fileExtension)) {
+					return exporter;
+				}
+			}
+			return null;
+		} catch (Exception e) {
+			throw new GateRuntimeException(e);
+		}
+	}
+
+	@Override
+	protected Document readDocument(String documentName) {
+		File documentFile = new File(directory, documentName);
+		URL documentURL;
+		try {
+			documentURL = documentFile.toURI().toURL();
+		} catch (MalformedURLException e) {
+			throw new GateRuntimeException("Could not create URL for document name " + documentName, e);
 		}
 		FeatureMap params = Factory.newFeatureMap();
-		params.put(Document.DOCUMENT_URL_PARAMETER_NAME, docURL);
+		params.put(Document.DOCUMENT_URL_PARAMETER_NAME, documentURL);
+		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
+		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
 		try {
-			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, docName);
-		} catch (ResourceInstantiationException ex) {
-			throw new GateRuntimeException("Could not create Document from file " + docFile, ex);
+			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, documentName);
+		} catch (ResourceInstantiationException e) {
+			throw new GateRuntimeException("Could not create Document from file " + documentFile, e);
 		}
 	}
 
 	@Override
 	protected void createDocument(Document document) {
-
+		String documentName = document.getName();
+		File documentFile = new File(directory, documentName);
+		try {
+			documentFile.createNewFile();
+		} catch (IOException e) {
+			throw new GateRuntimeException(e);
+		}
 	}
 
 	@Override
 	protected void updateDocument(Document document) {
-		if (getReadonly()) {
-			return;
-		}
-		String docName = document.getName();
-		// get the extension and then look up the document exporter for that
-		// extension which will be used to do the actual saving.
-		int extDotPos = docName.lastIndexOf(".");
-		if (extDotPos <= 0) {
-			throw new GateRuntimeException(
-					"Did not find a file name extensions when trying to save document " + docName);
-		}
-		String ext = docName.substring(extDotPos + 1);
-		if (ext.isEmpty()) {
-			throw new GateRuntimeException("Encountered empty extension when trying to save document " + docName);
-		}
-		DocumentExporter de = extension2Exporter.get(ext);
-		logger.info("DirectoryCorpus/saveDocument exit is " + ext + " exporter " + de);
-		File docFile = new File(backingDirectoryFile, docName);
+		String documentName = document.getName();
+		DocumentExporter exporter = mimeType != null && mimeType.length() > 0 ? getExporter(mimeType)
+				: getExporterForExtension(FilenameUtils.getExtension(documentName));
+
+		File documentFile = new File(directory, documentName);
 		try {
-			logger.info("DirectoryCorpus/saveDocument trying to save document " + document.getName()
-					+ " using exporter " + de);
-			de.export(document, docFile);
-			logger.info("DirectoryCorpus/saveDocument saved: " + document.getName());
-		} catch (IOException ex) {
-			throw new GateRuntimeException("Could not save file: " + docFile, ex);
+			exporter.export(document, documentFile);
+		} catch (IOException e) {
+			throw new GateRuntimeException("Could not save file: " + documentFile, e);
 		}
 
 	}
 
 	@Override
 	protected void deleteDocument(Document document) {
-
+		String documentName = document.getName();
+		File documentFile = new File(directory, documentName);
+		documentFile.delete();
 	}
 
 	@Override
 	protected void renameDocument(Document document, String oldName, String newName) {
-
+		File oldFile = new File(directory, oldName);
+		File newFile = new File(directory, newName);
+		oldFile.renameTo(newFile);
 	}
 
 }

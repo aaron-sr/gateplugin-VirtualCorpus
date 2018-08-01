@@ -20,7 +20,9 @@
  */
 package at.ofai.gate.virtualcorpus;
 
+import java.io.ByteArrayOutputStream;
 import java.io.FileFilter;
+import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -34,6 +36,7 @@ import org.apache.log4j.Logger;
 
 import gate.Corpus;
 import gate.Document;
+import gate.DocumentExporter;
 import gate.Gate;
 import gate.Resource;
 import gate.creole.AbstractLanguageResource;
@@ -63,6 +66,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	protected Boolean readonly;
 	protected Boolean immutable;
+	protected String encoding;
+	protected String mimeType;
 
 	private DocumentListener documentListener = new VirtualCorpusDocumentListener(this);
 
@@ -86,6 +91,26 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		return immutable;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "encoding to read and write document content", defaultValue = "utf-8")
+	public void setEncoding(String encoding) {
+		this.encoding = encoding;
+	}
+
+	public String getEncoding() {
+		return encoding;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "mimeType to read and write document content", defaultValue = "")
+	public void setMimeType(String mimeType) {
+		this.mimeType = mimeType;
+	}
+
+	public String getMimeType() {
+		return mimeType;
+	}
+
 	private List<String> documentNames = new ArrayList<String>();
 	private Map<String, Document> documents = new HashMap<String, Document>();
 
@@ -95,6 +120,33 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			this.documentNames.add(name);
 		}
 		Gate.getCreoleRegister().addCreoleListener(new VirtualCorpusCreoleListener(this));
+	}
+
+	protected DocumentExporter getExporter(String mimeType) {
+		try {
+			for (Resource resource : Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter")) {
+				DocumentExporter exporter = (DocumentExporter) resource;
+				if (exporter.getMimeType().contentEquals(mimeType)) {
+					return exporter;
+				}
+			}
+			return null;
+		} catch (Exception e) {
+			throw new GateRuntimeException(e);
+		}
+	}
+
+	protected String export(DocumentExporter exporter, Document document, String encoding) {
+		if (exporter == null) {
+			return document.toXml();
+		}
+		try {
+			ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+			exporter.export(document, outputStream);
+			return outputStream.toString(encoding);
+		} catch (IOException e) {
+			throw new GateRuntimeException(e);
+		}
 	}
 
 	private static class VirtualCorpusCreoleListener implements CreoleListener {

@@ -21,18 +21,13 @@
 
 package at.ofai.gate.virtualcorpus;
 
-import java.io.File;
-import java.net.URL;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.apache.log4j.Logger;
@@ -47,7 +42,6 @@ import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
-import gate.event.CorpusListener;
 import gate.util.GateRuntimeException;
 
 /**
@@ -69,9 +63,28 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private static final long serialVersionUID = -8485133333415382902L;
 	private static Logger logger = Logger.getLogger(JDBCCorpus.class);
 
-	protected List<CorpusListener> listeners = new ArrayList<CorpusListener>();
+	private static final String SELECT_NAMES_SQL = "SELECT ${documentNameField} from ${tableName}";
+	private static final String SELECT_CONTENT_SQL = "SELECT ${documentContentField} from ${tableName} WHERE ${documentNameField} = ?";
+	private static final String INSERT_SQL = "INSERT INTO ${tableName} (${documentNameField}, ${documentContentField}) VALUES (?, ?)";
+	private static final String UPDATE_NAME_SQL = "UPDATE ${tableName SET ${documentNameField} = ? WHERE ${documentNameField} = ?";
+	private static final String UPDATE_CONTENT_SQL = "UPDATE ${tableName} SET ${documentContentField} = ? WHERE ${documentNameField} = ?";
+	private static final String DELETE_SQL = "DELETE ${tableName} WHERE ${documentNameField} = ?";
 
 	protected String jdbcDriver;
+	protected String jdbcUrl = "";
+	protected String jdbcUser = "";
+	protected String jdbcPassword = "";
+	protected String tableName;
+	protected String documentNameField;
+	protected String documentContentField;
+	protected String mimeType = "";
+
+	private Connection dbConnection = null;
+	private PreparedStatement selectContentStatement = null;
+	private PreparedStatement insertStatement = null;
+	private PreparedStatement updateNameStatement = null;
+	private PreparedStatement updateContentStatement = null;
+	private PreparedStatement deleteStatement = null;
 
 	@CreoleParameter(comment = "The JDBC driver to use", defaultValue = "org.sqlite.JDBC")
 	public void setJdbcDriver(String driver) {
@@ -82,8 +95,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		return jdbcDriver;
 	}
 
-	protected String jdbcUrl = "";
-
 	@CreoleParameter(comment = "The JDBC URL, may contain $prop{name} or $env{name} or ${relpath}", defaultValue = "jdbc:sqlite:")
 	public void setJdbcUrl(String url) {
 		jdbcUrl = url;
@@ -92,8 +103,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	public String getJdbcUrl() {
 		return jdbcUrl;
 	}
-
-	protected String jdbcUser = "";
 
 	@Optional
 	@CreoleParameter(comment = "The JDBC user id", defaultValue = "")
@@ -105,8 +114,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		return jdbcUser;
 	}
 
-	protected String jdbcPassword = "";
-
 	@Optional
 	@CreoleParameter(comment = "The JDBC password", defaultValue = "")
 	public void setJdbcPassword(String pw) {
@@ -117,20 +124,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		return jdbcPassword;
 	}
 
-	protected URL dbDirectoryUrl = null;
-
-	@Optional
-	@CreoleParameter(comment = "The location of where a file database is stored. This is not used directly but can be used to replace the ${dbdirectory} variable in the jdbcUrl parameter", defaultValue = "file://.")
-	public void setDbDirectoryUrl(URL dir) {
-		dbDirectoryUrl = dir;
-	}
-
-	public URL getDbDirectoryUrl() {
-		return dbDirectoryUrl;
-	}
-
-	/**
-	 */
 	@CreoleParameter(comment = "The database table name", defaultValue = "")
 	public void setTableName(String name) {
 		tableName = name;
@@ -139,8 +132,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	public String getTableName() {
 		return tableName;
 	}
-
-	protected String tableName;
 
 	@CreoleParameter(comment = "The document id/name field name", defaultValue = "")
 	public void setDocumentNameField(String name) {
@@ -151,8 +142,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		return documentNameField;
 	}
 
-	protected String documentNameField;
-
 	@CreoleParameter(comment = "The document content field name", defaultValue = "")
 	public void setDocumentContentField(String name) {
 		documentContentField = name;
@@ -162,40 +151,17 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		return documentContentField;
 	}
 
-	protected String documentContentField;
-
+	@Override
 	@Optional
 	@CreoleParameter(comment = "Mime type of content, if empty, GATE XML is assumed", defaultValue = "")
 	public void setMimeType(String type) {
 		mimeType = type;
 	}
 
+	@Override
 	public String getMimeType() {
 		return mimeType;
 	}
-
-	protected String mimeType = "";
-
-	@CreoleParameter(comment = "SQL Query for selecting the set of document ids/names", defaultValue = "SELECT ${documentNameField} from ${tableName}")
-	@Optional
-	public void setSelectSQL(String sql) {
-		this.selectSQL = sql;
-	}
-
-	/**
-	 * @return
-	 */
-	public String getSelectSQL() {
-		return this.selectSQL;
-	}
-
-	protected String selectSQL = "SELECT ${documentNameField} from ${tableName}";
-
-	protected Connection dbConnection = null;
-	protected PreparedStatement getContentStatement = null;
-	protected PreparedStatement updateContentStatement = null;
-
-	String encoding = "utf-8";
 
 	@Override
 	public Resource init() throws ResourceInstantiationException {
@@ -208,65 +174,35 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		if (getDocumentContentField() == null || getDocumentContentField().equals("")) {
 			throw new ResourceInstantiationException("documentContentField must not be empty");
 		}
-		if (getSelectSQL() == null || getSelectSQL().equals("")) {
-			throw new ResourceInstantiationException("selectSQL must not be empty");
-		}
-		String query = getSelectSQL();
-		query = query.replaceAll(Pattern.quote("${tableName}"), getTableName());
-		query = query.replaceAll(Pattern.quote("${documentNameField}"), getDocumentNameField());
-		String expandedUrl = "";
 		try {
 			Class.forName(getJdbcDriver());
-			String dbdirectory = "";
-			if (getDbDirectoryUrl().getProtocol().equals("file")) {
-				dbdirectory = getDbDirectoryUrl().getPath();
-				dbdirectory = new File(dbdirectory).getAbsolutePath();
-			} else {
-				throw new GateRuntimeException("The database directory URL is not a file URL");
-			}
-			Map<String, String> dbdirectoryMap = new HashMap<String, String>();
-			dbdirectoryMap.put("dbdirectory", dbdirectory);
-
-			expandedUrl = gate.Utils.replaceVariablesInString(jdbcUrl, dbdirectoryMap, this);
-			String expandedUser = gate.Utils.replaceVariablesInString(jdbcUser, dbdirectoryMap, this);
-			String expandedPassword = gate.Utils.replaceVariablesInString(jdbcPassword, dbdirectoryMap, this);
-
-			System.out.println("Using JDBC URL: " + expandedUrl);
-			dbConnection = DriverManager.getConnection(expandedUrl, expandedUser, expandedPassword);
-		} catch (Exception ex) {
-			throw new ResourceInstantiationException("Could not get driver/connection", ex);
+		} catch (ClassNotFoundException e) {
+			throw new ResourceInstantiationException("could not load jdbc driver");
 		}
-		Statement stmt = null;
 		try {
-			stmt = dbConnection.createStatement();
-			ResultSet rs = null;
-			rs = stmt.executeQuery(query);
+			dbConnection = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+		} catch (Exception e) {
+			throw new ResourceInstantiationException("Could not get driver/connection", e);
+		}
+		try {
+			ResultSet rs = prepareStatement(SELECT_NAMES_SQL).executeQuery();
 			List<String> documentNames = new ArrayList<>();
 			while (rs.next()) {
 				String docName = rs.getString(getDocumentNameField());
 				documentNames.add(docName);
 			}
 			initDocuments(documentNames);
-		} catch (SQLException ex) {
-			throw new ResourceInstantiationException("Problem accessing database", ex);
+		} catch (SQLException e) {
+			throw new ResourceInstantiationException("Problem accessing database", e);
 		}
-		// create all the prepared statements we need for accessing stuff in the db
 		try {
-			query = "SELECT " + getDocumentContentField() + " FROM " + getTableName() + " WHERE "
-					+ getDocumentNameField() + " = ?";
-			System.out.println("Preparing get document statement: " + query);
-			getContentStatement = dbConnection.prepareStatement(query);
-		} catch (SQLException ex) {
-			throw new ResourceInstantiationException("Could not prepare statement", ex);
-		}
-
-		try {
-			String updstmt = "UPDATE " + getTableName() + " SET " + getDocumentContentField() + " = ? " + " WHERE "
-					+ getDocumentNameField() + " = ?";
-			System.out.println("Preparing update document statement: " + updstmt);
-			updateContentStatement = dbConnection.prepareStatement(updstmt);
-		} catch (SQLException ex) {
-			throw new ResourceInstantiationException("Could not prepare statement", ex);
+			selectContentStatement = prepareStatement(SELECT_CONTENT_SQL);
+			insertStatement = prepareStatement(INSERT_SQL);
+			updateNameStatement = prepareStatement(UPDATE_NAME_SQL);
+			updateContentStatement = prepareStatement(UPDATE_CONTENT_SQL);
+			deleteStatement = prepareStatement(DELETE_SQL);
+		} catch (SQLException e) {
+			throw new ResourceInstantiationException("Could not prepare statement", e);
 		}
 
 		return this;
@@ -278,67 +214,84 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 			if (dbConnection != null && !dbConnection.isClosed()) {
 				dbConnection.close();
 			}
-		} catch (SQLException ex) {
+		} catch (SQLException e) {
+			e.printStackTrace();
 		}
 	}
 
 	@Override
-	protected Document readDocument(String docName) {
+	protected Document readDocument(String documentName) {
 		try {
-
-			ResultSet rs = null;
-			String docEncoding = encoding;
-
-			getContentStatement.setString(1, docName);
-			rs = getContentStatement.executeQuery();
+			selectContentStatement.setString(1, documentName);
+			ResultSet rs = selectContentStatement.executeQuery();
 			if (!rs.next()) {
-				throw new GateRuntimeException("Document not found int the DB table: " + docName);
+				throw new GateRuntimeException("Document not found int the DB table: " + documentName);
 			}
 
 			String content = rs.getString(1);
 
 			if (rs.next()) {
-				throw new GateRuntimeException("More than one row found for document name " + docName);
+				throw new GateRuntimeException("More than one row found for document name " + documentName);
 			}
 
-			String docMimeType = mimeType;
 			FeatureMap params = Factory.newFeatureMap();
 			params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
-			params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, docEncoding);
-			params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, docMimeType);
-			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, docName);
-		} catch (Exception ex) {
-			throw new GateRuntimeException("Exception creating the document", ex);
+			params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
+			params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
+			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, documentName);
+		} catch (Exception e) {
+			throw new GateRuntimeException("Exception creating the document", e);
 		}
 	}
 
 	@Override
 	protected void createDocument(Document document) {
-
+		try {
+			insertStatement.setString(1, document.getName());
+			insertStatement.setString(2, document.getContent().toString());
+			insertStatement.executeUpdate();
+		} catch (Exception e) {
+			throw new GateRuntimeException("Exception inserting the document", e);
+		}
 	}
 
 	@Override
 	protected void updateDocument(Document document) {
-		String docContent = document.toXml();
-		String docName = document.getName();
 		try {
-			updateContentStatement.setString(2, docName);
-			updateContentStatement.setString(1, docContent);
-			updateContentStatement.execute();
-		} catch (Exception ex) {
-			throw new GateRuntimeException("Error when trying to update database row for document doc.getName()", ex);
+			updateContentStatement.setString(2, document.getName());
+			updateContentStatement.setString(1, export(getExporter(mimeType), document, encoding));
+			updateContentStatement.executeUpdate();
+		} catch (Exception e) {
+			throw new GateRuntimeException("Exception inserting the document", e);
 		}
-
 	}
 
 	@Override
 	protected void deleteDocument(Document document) {
-
+		try {
+			deleteStatement.setString(1, document.getName());
+			deleteStatement.executeUpdate();
+		} catch (Exception e) {
+			throw new GateRuntimeException("Exception inserting the document", e);
+		}
 	}
 
 	@Override
 	protected void renameDocument(Document document, String oldName, String newName) {
+		try {
+			updateNameStatement.setString(2, oldName);
+			updateNameStatement.setString(1, newName);
+			updateNameStatement.executeUpdate();
+		} catch (Exception e) {
+			throw new GateRuntimeException("Exception inserting the document", e);
+		}
+	}
 
+	private PreparedStatement prepareStatement(String query) throws SQLException {
+		query = query.replaceAll(Pattern.quote("${tableName}"), getTableName());
+		query = query.replaceAll(Pattern.quote("${documentNameField}"), getDocumentNameField());
+		query = query.replaceAll(Pattern.quote("${documentContentField}"), getDocumentContentField());
+		return dbConnection.prepareStatement(query);
 	}
 
 }
