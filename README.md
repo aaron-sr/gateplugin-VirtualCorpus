@@ -5,7 +5,7 @@ A plugin for the GATE language technology framework that provides corpus LRs for
 
 Current Features
 ----------------
-* jdbc corpus (including libraries for sqlite, postgres, mysql/mariadb, h2)
+* jdbc corpus (including libraries for sqlite, postgres, mysql/mariadb, h2) with multiple content columns
 * directory corpus with recursive support
 * encoding and mimeType support to read and write content from/to backend
 
