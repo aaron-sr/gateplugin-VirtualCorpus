@@ -210,7 +210,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		} catch (SQLException e) {
 			throw new ResourceInstantiationException("Problem accessing database", e);
 		}
-		initDocuments(documentNames);
+		initVirtualCorpus(documentNames);
 		try {
 			selectContentStatements = prepareStatements(SELECT_CONTENT_SQL);
 			insertStatements = prepareStatements(INSERT_SQL);
@@ -236,95 +236,79 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Override
-	protected Document readDocument(String documentName) {
+	protected Document readDocument(String documentName) throws Exception {
 		Map<String, String> features = documentFeatures.get(documentName);
 		String id = features.get(JDBC_ID);
 		String contentColumn = features.get(JDBC_CONTENT_COLUMN);
 		PreparedStatement selectContentStatement = selectContentStatements.get(contentColumn);
-		try {
-			selectContentStatement.setString(1, id);
-			ResultSet rs = selectContentStatement.executeQuery();
-			if (!rs.next()) {
-				throw new GateRuntimeException("Document not found int the DB table: " + documentName);
-			}
-
-			String content = rs.getString(1);
-
-			if (rs.next()) {
-				throw new GateRuntimeException("More than one row found for document name " + documentName);
-			}
-
-			FeatureMap params = Factory.newFeatureMap();
-			params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
-			params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
-			params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
-			FeatureMap gateFeatures = Factory.newFeatureMap();
-			gateFeatures.putAll(features);
-			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, gateFeatures, documentName);
-		} catch (Exception e) {
-			throw new GateRuntimeException("Exception creating the document", e);
+		selectContentStatement.setString(1, id);
+		ResultSet rs = selectContentStatement.executeQuery();
+		if (!rs.next()) {
+			throw new GateRuntimeException("Document not found int the DB table: " + documentName);
 		}
+
+		String content = rs.getString(1);
+
+		if (rs.next()) {
+			throw new GateRuntimeException("More than one row found for document name " + documentName);
+		}
+
+		FeatureMap params = Factory.newFeatureMap();
+		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
+		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
+		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
+		FeatureMap gateFeatures = Factory.newFeatureMap();
+		gateFeatures.putAll(features);
+		return (Document) Factory.createResource(DocumentImpl.class.getName(), params, gateFeatures, documentName);
 	}
 
 	@Override
-	protected void createDocument(Document document) {
+	protected void createDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
 		String id = features.get(JDBC_ID).toString();
 		String contentColumn = features.get(JDBC_CONTENT_COLUMN).toString();
 
-		try {
-			PreparedStatement selectContentStatement = selectContentStatements.get(contentColumn);
-			selectContentStatement.setString(1, id);
-			ResultSet rs = selectContentStatement.executeQuery();
-			if (rs.next()) {
-				PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
-				updateContentStatement.setString(2, id);
-				updateContentStatement.setString(1, export(getExporter(mimeType), document, encoding));
-				updateContentStatement.executeUpdate();
-			} else {
-				PreparedStatement insertStatement = insertStatements.get(contentColumn);
-				insertStatement.setString(1, id);
-				insertStatement.setString(2, export(getExporter(mimeType), document, encoding));
-				insertStatement.executeUpdate();
-			}
-		} catch (Exception e) {
-			throw new GateRuntimeException("Exception inserting the document", e);
+		PreparedStatement selectContentStatement = selectContentStatements.get(contentColumn);
+		selectContentStatement.setString(1, id);
+		ResultSet rs = selectContentStatement.executeQuery();
+		if (rs.next()) {
+			PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
+			updateContentStatement.setString(2, id);
+			updateContentStatement.setString(1, export(getExporter(mimeType), document, encoding));
+			updateContentStatement.executeUpdate();
+		} else {
+			PreparedStatement insertStatement = insertStatements.get(contentColumn);
+			insertStatement.setString(1, id);
+			insertStatement.setString(2, export(getExporter(mimeType), document, encoding));
+			insertStatement.executeUpdate();
 		}
 	}
 
 	@Override
-	protected void updateDocument(Document document) {
+	protected void updateDocument(Document document) throws Exception {
 		String documentName = document.getName();
 		Map<String, String> features = documentFeatures.get(documentName);
 		String id = features.get(JDBC_ID);
 		String contentColumn = features.get(JDBC_CONTENT_COLUMN);
 		PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
-		try {
-			updateContentStatement.setString(2, id);
-			updateContentStatement.setString(1, export(getExporter(mimeType), document, encoding));
-			updateContentStatement.executeUpdate();
-		} catch (Exception e) {
-			throw new GateRuntimeException("Exception inserting the document", e);
-		}
+		updateContentStatement.setString(2, id);
+		updateContentStatement.setString(1, export(getExporter(mimeType), document, encoding));
+		updateContentStatement.executeUpdate();
 	}
 
 	@Override
-	protected void deleteDocument(Document document) {
+	protected void deleteDocument(Document document) throws Exception {
 		String documentName = document.getName();
 		Map<String, String> features = documentFeatures.get(documentName);
 		String id = features.get(JDBC_ID);
 		String contentColumn = features.get(JDBC_CONTENT_COLUMN);
 		PreparedStatement deleteStatement = deleteStatements.get(contentColumn);
-		try {
-			deleteStatement.setString(1, id);
-			deleteStatement.executeUpdate();
-		} catch (Exception e) {
-			throw new GateRuntimeException("Exception inserting the document", e);
-		}
+		deleteStatement.setString(1, id);
+		deleteStatement.executeUpdate();
 	}
 
 	@Override
-	protected void renameDocument(Document document, String oldName, String newName) {
+	protected void renameDocument(Document document, String oldName, String newName) throws Exception {
 		throw new GateRuntimeException("renaming document is not supported");
 	}
 

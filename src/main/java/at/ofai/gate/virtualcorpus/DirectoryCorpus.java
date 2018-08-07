@@ -46,6 +46,7 @@ import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
 import gate.util.Files;
+import gate.util.GateException;
 import gate.util.GateRuntimeException;
 
 /**
@@ -112,16 +113,21 @@ public class DirectoryCorpus extends VirtualCorpus {
 
 	@Override
 	public Resource init() throws ResourceInstantiationException {
-		logger.info("DirectoryCorpus: calling init");
-
 		for (String extension : extensions) {
 			if (!DocumentFormat.getSupportedFileSuffixes().contains(extension)) {
 				throw new ResourceInstantiationException(
 						"cannot read file extension " + extension + ", no DocumentFormat available");
 			}
-			if (!readonly && getExporterForExtension(extension) == null) {
-				throw new ResourceInstantiationException(
-						"cannot write file extension " + extension + ", no DocumentExporter available");
+			if (!readonly) {
+				try {
+					DocumentExporter exporter = getExporterForExtension(extension);
+					if (exporter == null) {
+						throw new NullPointerException();
+					}
+				} catch (Exception e) {
+					throw new ResourceInstantiationException(
+							"cannot write file extension " + extension + ", no DocumentExporter available");
+				}
 			}
 		}
 
@@ -159,26 +165,22 @@ public class DirectoryCorpus extends VirtualCorpus {
 				documentNames.add(filename);
 			}
 		}
-		initDocuments(documentNames);
+		initVirtualCorpus(documentNames);
 		return this;
 	}
 
-	protected DocumentExporter getExporterForExtension(String fileExtension) {
-		try {
-			for (Resource resource : Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter")) {
-				DocumentExporter exporter = (DocumentExporter) resource;
-				if (exporter.getDefaultExtension().contentEquals(fileExtension)) {
-					return exporter;
-				}
+	protected DocumentExporter getExporterForExtension(String fileExtension) throws GateException {
+		for (Resource resource : Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter")) {
+			DocumentExporter exporter = (DocumentExporter) resource;
+			if (exporter.getDefaultExtension().contentEquals(fileExtension)) {
+				return exporter;
 			}
-			return null;
-		} catch (Exception e) {
-			throw new GateRuntimeException(e);
 		}
+		return null;
 	}
 
 	@Override
-	protected Document readDocument(String documentName) {
+	protected Document readDocument(String documentName) throws Exception {
 		File documentFile = new File(directory, documentName);
 		URL documentURL;
 		try {
@@ -190,48 +192,36 @@ public class DirectoryCorpus extends VirtualCorpus {
 		params.put(Document.DOCUMENT_URL_PARAMETER_NAME, documentURL);
 		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
 		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
-		try {
-			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, documentName);
-		} catch (ResourceInstantiationException e) {
-			throw new GateRuntimeException("Could not create Document from file " + documentFile, e);
-		}
+		return (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, documentName);
 	}
 
 	@Override
-	protected void createDocument(Document document) {
+	protected void createDocument(Document document) throws Exception {
 		String documentName = document.getName();
 		File documentFile = new File(directory, documentName);
-		try {
-			documentFile.createNewFile();
-		} catch (IOException e) {
-			throw new GateRuntimeException(e);
-		}
+		documentFile.createNewFile();
 	}
 
 	@Override
-	protected void updateDocument(Document document) {
+	protected void updateDocument(Document document) throws Exception {
 		String documentName = document.getName();
 		DocumentExporter exporter = mimeType != null && mimeType.length() > 0 ? getExporter(mimeType)
 				: getExporterForExtension(FilenameUtils.getExtension(documentName));
 
 		File documentFile = new File(directory, documentName);
-		try {
-			exporter.export(document, documentFile);
-		} catch (IOException e) {
-			throw new GateRuntimeException("Could not save file: " + documentFile, e);
-		}
+		exporter.export(document, documentFile);
 
 	}
 
 	@Override
-	protected void deleteDocument(Document document) {
+	protected void deleteDocument(Document document) throws Exception {
 		String documentName = document.getName();
 		File documentFile = new File(directory, documentName);
 		documentFile.delete();
 	}
 
 	@Override
-	protected void renameDocument(Document document, String oldName, String newName) {
+	protected void renameDocument(Document document, String oldName, String newName) throws Exception {
 		File oldFile = new File(directory, oldName);
 		File newFile = new File(directory, newName);
 		oldFile.renameTo(newFile);
