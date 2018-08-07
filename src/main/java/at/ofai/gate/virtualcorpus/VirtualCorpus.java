@@ -122,7 +122,6 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			this.documentNames.add(name);
 		}
 		Gate.getCreoleRegister().addCreoleListener(new VirtualCorpusCreoleListener(this));
-		unloaded = true;
 	}
 
 	protected DocumentExporter getExporter(String mimeType) {
@@ -181,6 +180,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 				corpus.unloadDocument(document);
 			} else if (resource == corpus) {
 				Gate.getCreoleRegister().removeCreoleListener(this);
+				corpus.unloaded = true;
 			}
 		}
 
