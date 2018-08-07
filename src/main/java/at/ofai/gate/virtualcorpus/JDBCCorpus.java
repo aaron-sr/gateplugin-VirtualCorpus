@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.regex.Pattern;
 
 import org.apache.log4j.Logger;
@@ -68,12 +69,10 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	public static final String JDBC_ID = "jdbcId";
 	public static final String JDBC_CONTENT_COLUMN = "jdbcContentColumn";
 
-	private static final String SELECT_ID_SQL = "SELECT ${idColumn} from ${tableName}";
-	private static final String SELECT_CONTENT_SQL = "SELECT ${valueColumn} from ${tableName} WHERE ${idColumn} = ?";
+	private static final String SELECT_ID_SQL = "SELECT ${idColumn} FROM ${tableName}";
+	private static final String SELECT_CONTENT_SQL = "SELECT ${valueColumn} FROM ${tableName} WHERE ${idColumn} = ?";
 	private static final String INSERT_SQL = "INSERT INTO ${tableName} (${idColumn}, ${valueColumn}) VALUES (?, ?)";
-	private static final String UPDATE_NAME_SQL = "UPDATE ${tableName} SET ${idColumn} = ? WHERE ${idColumn} = ?";
 	private static final String UPDATE_CONTENT_SQL = "UPDATE ${tableName} SET ${valueColumn} = ? WHERE ${idColumn} = ?";
-	private static final String DELETE_SQL = "DELETE ${tableName} WHERE ${idColumn} = ?";
 
 	protected String jdbcDriver;
 	protected String jdbcUrl = "";
@@ -89,9 +88,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private Connection connection = null;
 	private Map<String, PreparedStatement> selectContentStatements;
 	private Map<String, PreparedStatement> insertStatements;
-	private Map<String, PreparedStatement> updateNameStatements;
 	private Map<String, PreparedStatement> updateContentStatements;
-	private Map<String, PreparedStatement> deleteStatements;
 
 	@CreoleParameter(comment = "The JDBC driver to use", defaultValue = "org.sqlite.JDBC")
 	public void setJdbcDriver(String driver) {
@@ -181,7 +178,17 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 			throw new ResourceInstantiationException("could not load jdbc driver");
 		}
 		try {
-			connection = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+			Properties properties = new Properties();
+			if (jdbcUser != null) {
+				properties.put("user", jdbcUser);
+			}
+			if (jdbcPassword != null) {
+				properties.put("password", jdbcPassword);
+			}
+			if (encoding != null) {
+				properties.put("characterEncoding", encoding);
+			}
+			connection = DriverManager.getConnection(jdbcUrl, properties);
 		} catch (Exception e) {
 			throw new ResourceInstantiationException("Could not get driver/connection", e);
 		}
@@ -214,9 +221,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		try {
 			selectContentStatements = prepareStatements(SELECT_CONTENT_SQL);
 			insertStatements = prepareStatements(INSERT_SQL);
-			updateNameStatements = prepareStatements(UPDATE_NAME_SQL);
 			updateContentStatements = prepareStatements(UPDATE_CONTENT_SQL);
-			deleteStatements = prepareStatements(DELETE_SQL);
 		} catch (SQLException e) {
 			throw new ResourceInstantiationException("Could not prepare statement", e);
 		}
@@ -257,9 +262,9 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
 		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
 		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
-		FeatureMap gateFeatures = Factory.newFeatureMap();
-		gateFeatures.putAll(features);
-		return (Document) Factory.createResource(DocumentImpl.class.getName(), params, gateFeatures, documentName);
+		Document document = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, documentName);
+		document.getFeatures().putAll(features);
+		return document;
 	}
 
 	@Override
@@ -274,12 +279,12 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		if (rs.next()) {
 			PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
 			updateContentStatement.setString(2, id);
-			updateContentStatement.setString(1, export(getExporter(mimeType), document, encoding));
+			updateContentStatement.setString(1, export(getExporter(mimeType), document));
 			updateContentStatement.executeUpdate();
 		} else {
 			PreparedStatement insertStatement = insertStatements.get(contentColumn);
 			insertStatement.setString(1, id);
-			insertStatement.setString(2, export(getExporter(mimeType), document, encoding));
+			insertStatement.setString(2, export(getExporter(mimeType), document));
 			insertStatement.executeUpdate();
 		}
 	}
@@ -292,7 +297,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		String contentColumn = features.get(JDBC_CONTENT_COLUMN);
 		PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
 		updateContentStatement.setString(2, id);
-		updateContentStatement.setString(1, export(getExporter(mimeType), document, encoding));
+		updateContentStatement.setString(1, export(getExporter(mimeType), document));
 		updateContentStatement.executeUpdate();
 	}
 
@@ -302,9 +307,10 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		Map<String, String> features = documentFeatures.get(documentName);
 		String id = features.get(JDBC_ID);
 		String contentColumn = features.get(JDBC_CONTENT_COLUMN);
-		PreparedStatement deleteStatement = deleteStatements.get(contentColumn);
-		deleteStatement.setString(1, id);
-		deleteStatement.executeUpdate();
+		PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
+		updateContentStatement.setString(2, id);
+		updateContentStatement.setString(1, null);
+		updateContentStatement.executeUpdate();
 	}
 
 	@Override
@@ -321,10 +327,10 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private Map<String, PreparedStatement> prepareStatements(String query) throws SQLException {
 		Map<String, PreparedStatement> statements = new HashMap<>();
 		for (String contentColumn : valueColumns) {
-			query = query.replaceAll(Pattern.quote("${tableName}"), tableName);
-			query = query.replaceAll(Pattern.quote("${idColumn}"), idColumn);
-			query = query.replaceAll(Pattern.quote("${valueColumn}"), contentColumn);
-			PreparedStatement statement = connection.prepareStatement(query);
+			String columnQuery = query.replaceAll(Pattern.quote("${tableName}"), tableName);
+			columnQuery = columnQuery.replaceAll(Pattern.quote("${idColumn}"), idColumn);
+			columnQuery = columnQuery.replaceAll(Pattern.quote("${valueColumn}"), contentColumn);
+			PreparedStatement statement = connection.prepareStatement(columnQuery);
 			statements.put(contentColumn, statement);
 		}
 		return statements;

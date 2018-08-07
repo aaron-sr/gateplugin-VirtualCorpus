@@ -23,6 +23,7 @@ package at.ofai.gate.virtualcorpus;
 import java.io.ByteArrayOutputStream;
 import java.io.FileFilter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -70,6 +71,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	protected String mimeType;
 
 	private DocumentListener documentListener = new VirtualCorpusDocumentListener(this);
+	private boolean unloaded = false;
 
 	@Optional
 	@CreoleParameter(comment = "If true, document content changes will not be saved and document names cannot be renamed", defaultValue = "true")
@@ -120,6 +122,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			this.documentNames.add(name);
 		}
 		Gate.getCreoleRegister().addCreoleListener(new VirtualCorpusCreoleListener(this));
+		unloaded = true;
 	}
 
 	protected DocumentExporter getExporter(String mimeType) {
@@ -136,14 +139,27 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 	}
 
-	protected String export(DocumentExporter exporter, Document document, String encoding) {
-		if (exporter == null) {
-			return document.toXml();
-		}
+	protected void export(DocumentExporter exporter, Document document, OutputStream outputStream) {
 		try {
-			ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-			exporter.export(document, outputStream);
-			return outputStream.toString(encoding);
+			if (exporter == null) {
+				outputStream.write(document.getContent().toString().getBytes(encoding));
+			} else {
+				exporter.export(document, outputStream);
+			}
+		} catch (IOException e) {
+			throw new GateRuntimeException(e);
+		}
+	}
+
+	protected String export(DocumentExporter exporter, Document document) {
+		try {
+			if (exporter == null) {
+				return document.getContent().toString();
+			} else {
+				ByteArrayOutputStream baos = new ByteArrayOutputStream();
+				exporter.export(document, baos);
+				return baos.toString();
+			}
 		} catch (IOException e) {
 			throw new GateRuntimeException(e);
 		}
@@ -163,7 +179,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			if (corpus.contains(resource)) {
 				Document document = (Document) resource;
 				corpus.unloadDocument(document);
-			} else if (resource == this) {
+			} else if (resource == corpus) {
 				Gate.getCreoleRegister().removeCreoleListener(this);
 			}
 		}
@@ -227,7 +243,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		public void contentEdited(DocumentEvent e) {
 			Document document = (Document) e.getSource();
 			try {
-				corpus.updateDocument(document);
+				if (!corpus.readonly && !corpus.unloaded) {
+					corpus.updateDocument(document);
+				}
 			} catch (Exception e1) {
 				throw new GateRuntimeException("Exception updating the document", e1);
 			}
@@ -264,9 +282,11 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 		if (isDocumentLoaded(index)) {
 			try {
-				document.sync();
-			} catch (Exception ex) {
-				throw new GateRuntimeException("Problem syncing document " + document.getName(), ex);
+				if (!readonly && !unloaded) {
+					updateDocument(document);
+				}
+			} catch (Exception e) {
+				throw new GateRuntimeException("Problem updating document " + name, e);
 			}
 			documents.remove(name);
 			document.removeDocumentListener(documentListener);
@@ -275,8 +295,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public List<String> getDocumentNames() {
-		List<String> newList = new ArrayList<String>(documentNames);
-		return newList;
+		return new ArrayList<String>(documentNames);
 	}
 
 	@Override
@@ -297,9 +316,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		try {
 			Document document = readDocument(name);
 			documents.put(name, document);
-			if (!readonly) {
-				document.addDocumentListener(documentListener);
-			}
+			document.addDocumentListener(documentListener);
 			return document;
 		} catch (Exception ex) {
 			throw new GateRuntimeException("Problem retrieving document data for " + name, ex);
@@ -442,7 +459,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		try {
 			documentNames.add(index, document.getName());
 			documents.put(document.getName(), document);
-			createDocument(document);
+			if (!unloaded) {
+				createDocument(document);
+			}
 			fireDocumentAdded(index, document);
 		} catch (Exception e) {
 			this.documentNames = backupNames;
@@ -490,7 +509,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		this.documents.putAll(newDocuments);
 		for (Document document : newDocuments.values()) {
 			try {
-				createDocument(document);
+				if (!unloaded) {
+					createDocument(document);
+				}
 				fireDocumentAdded(this.indexOf(document), document);
 			} catch (Exception e) {
 				this.documentNames = backupNames;
@@ -523,7 +544,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			if (!names.contains(name)) {
 				Document document = this.documents.remove(name);
 				try {
-					this.deleteDocument(document);
+					if (!unloaded) {
+						deleteDocument(document);
+					}
 					fireDocumentRemoved(indexes.remove(document), document);
 				} catch (Exception e) {
 					this.documentNames = backupNames;
@@ -550,7 +573,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			documents.remove(document.getName());
 			if (remove) {
 				try {
-					deleteDocument(document);
+					if (!unloaded) {
+						deleteDocument(document);
+					}
 					fireDocumentRemoved(index, document);
 				} catch (Exception e) {
 					this.documentNames = backupNames;
@@ -586,7 +611,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		for (Document document : documents) {
 			this.documents.remove(document.getName());
 			try {
-				deleteDocument(document);
+				if (!unloaded) {
+					deleteDocument(document);
+				}
 				fireDocumentRemoved(indexes.remove(document), document);
 			} catch (Exception e) {
 				this.documentNames = backupNames;
@@ -613,7 +640,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		this.documents.clear();
 		for (Document document : indexes.keySet()) {
 			try {
-				deleteDocument(document);
+				if (!unloaded) {
+					deleteDocument(document);
+				}
 				fireDocumentRemoved(indexes.get(document), document);
 			} catch (Exception e) {
 				this.documentNames = backupNames;
