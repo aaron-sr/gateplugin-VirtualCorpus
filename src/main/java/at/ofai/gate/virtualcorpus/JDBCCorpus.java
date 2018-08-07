@@ -259,7 +259,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		}
 
 		FeatureMap params = Factory.newFeatureMap();
-		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
+		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content != null ? content : "");
 		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
 		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
 		Document document = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, documentName);
