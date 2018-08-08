@@ -73,6 +73,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private static final String SELECT_CONTENT_SQL = "SELECT ${valueColumn} FROM ${tableName} WHERE ${idColumn} = ?";
 	private static final String INSERT_SQL = "INSERT INTO ${tableName} (${idColumn}, ${valueColumn}) VALUES (?, ?)";
 	private static final String UPDATE_CONTENT_SQL = "UPDATE ${tableName} SET ${valueColumn} = ? WHERE ${idColumn} = ?";
+	private static final String ALL_COLUMNS = "*";
 
 	protected String jdbcDriver;
 	protected String jdbcUrl = "";
@@ -146,7 +147,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		return idColumn;
 	}
 
-	@CreoleParameter(comment = "The document content column (separate multiple values by comma)", defaultValue = "")
+	@CreoleParameter(comment = "The document content column (separate multiple values by comma, * for all columns)", defaultValue = "")
 	public void setValueColumn(String valueColumn) {
 		this.valueColumn = valueColumn;
 	}
@@ -192,6 +193,17 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		} catch (Exception e) {
 			throw new ResourceInstantiationException("Could not get driver/connection", e);
 		}
+		if (valueColumns.contains(ALL_COLUMNS)) {
+			try {
+				List<String> columns = getColumns(tableName);
+				columns.remove(idColumn);
+				valueColumns.clear();
+				valueColumns.addAll(columns);
+			} catch (SQLException e) {
+				throw new ResourceInstantiationException("could not load table columns");
+			}
+		}
+
 		List<String> documentNames = new ArrayList<>();
 		try {
 			ResultSet rs = prepareStatement(SELECT_ID_SQL).executeQuery();
@@ -227,6 +239,16 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		}
 
 		return this;
+	}
+
+	private List<String> getColumns(String tableName) throws SQLException {
+		List<String> columns = new ArrayList<>();
+		ResultSet resultSet = connection.getMetaData().getColumns(null, null, tableName, null);
+		while (resultSet.next()) {
+			columns.add(resultSet.getString("COLUMN_NAME"));
+		}
+
+		return columns;
 	}
 
 	@Override
