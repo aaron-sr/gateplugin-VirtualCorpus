@@ -265,10 +265,6 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final boolean isDocumentLoaded(int index) {
-		if (index < 0 || index >= documentNames.size()) {
-			throw new GateRuntimeException("Document number " + index + " not in corpus " + this.getName() + " of size "
-					+ documentNames.size());
-		}
 		return documents.containsKey(documentNames.get(index));
 	}
 
