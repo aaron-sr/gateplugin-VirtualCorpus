@@ -38,9 +38,11 @@ import org.apache.log4j.Logger;
 import gate.Corpus;
 import gate.Document;
 import gate.DocumentExporter;
+import gate.DocumentFormat;
 import gate.Gate;
 import gate.Resource;
 import gate.creole.AbstractLanguageResource;
+import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.Optional;
 import gate.event.CorpusEvent;
@@ -122,6 +124,25 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			this.documentNames.add(documentName);
 		}
 		Gate.getCreoleRegister().addCreoleListener(new VirtualCorpusCreoleListener(this));
+	}
+
+	protected final static boolean hasValue(String string) {
+		return string != null && string.length() > 0;
+	}
+
+	protected final void checkValidMimeType() throws ResourceInstantiationException {
+		if (hasValue(mimeType)) {
+			if (!DocumentFormat.getSupportedMimeTypes().contains(mimeType)) {
+				throw new ResourceInstantiationException(
+						"cannot read mimeType" + mimeType + ", no DocumentFormat available");
+			}
+			if (!readonly) {
+				if (getExporter(mimeType) == null) {
+					throw new ResourceInstantiationException(
+							"cannot write mimeType " + mimeType + ", no DocumentExporter available");
+				}
+			}
+		}
 	}
 
 	protected DocumentExporter getExporter(String mimeType) {

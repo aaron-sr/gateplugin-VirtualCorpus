@@ -72,7 +72,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 
 	private File directory;
 
-	@CreoleParameter(comment = "The directory URL where files will be read from")
+	@CreoleParameter(comment = "The directory URL where files will be read from", defaultValue = "")
 	public void setDirectoryURL(URL dirURL) {
 		this.directoryURL = dirURL;
 	}
@@ -82,7 +82,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 	}
 
 	@Optional
-	@CreoleParameter(comment = "A list of file extensions which will be loaded into the corpus. If not specified, all supported file extensions.")
+	@CreoleParameter(comment = "A list of file extensions which will be loaded into the corpus. If not specified, all supported file extensions.", defaultValue = "")
 	public void setExtensions(List<String> extensions) {
 		this.extensions = extensions;
 	}
@@ -113,28 +113,24 @@ public class DirectoryCorpus extends VirtualCorpus {
 
 	@Override
 	public Resource init() throws ResourceInstantiationException {
-		for (String extension : extensions) {
-			if (!DocumentFormat.getSupportedFileSuffixes().contains(extension)) {
-				throw new ResourceInstantiationException(
-						"cannot read file extension " + extension + ", no DocumentFormat available");
-			}
-			if (!readonly) {
-				try {
-					DocumentExporter exporter = getExporterForExtension(extension);
-					if (exporter == null) {
-						throw new NullPointerException();
-					}
-				} catch (Exception e) {
+		checkValidMimeType();
+		if (!hasValue(mimeType)) {
+			for (String extension : extensions) {
+				if (!DocumentFormat.getSupportedFileSuffixes().contains(extension)) {
 					throw new ResourceInstantiationException(
-							"cannot write file extension " + extension + ", no DocumentExporter available");
+							"cannot read file extension " + extension + ", no DocumentFormat available");
+				}
+				if (!readonly) {
+					if (getExporterForExtension(extension) == null) {
+						throw new ResourceInstantiationException(
+								"cannot write file extension " + extension + ", no DocumentExporter available");
+					}
 				}
 			}
 		}
-
 		if (directoryURL == null) {
 			throw new ResourceInstantiationException("directoryURL must be set");
 		}
-
 		try {
 			directory = Files.fileFromURL(directoryURL).getCanonicalFile();
 		} catch (Exception e) {
@@ -169,12 +165,15 @@ public class DirectoryCorpus extends VirtualCorpus {
 		return this;
 	}
 
-	protected DocumentExporter getExporterForExtension(String fileExtension) throws GateException {
-		for (Resource resource : Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter")) {
-			DocumentExporter exporter = (DocumentExporter) resource;
-			if (exporter.getDefaultExtension().contentEquals(fileExtension)) {
-				return exporter;
+	protected static DocumentExporter getExporterForExtension(String fileExtension) {
+		try {
+			for (Resource resource : Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter")) {
+				DocumentExporter exporter = (DocumentExporter) resource;
+				if (exporter.getDefaultExtension().contentEquals(fileExtension)) {
+					return exporter;
+				}
 			}
+		} catch (GateException e) {
 		}
 		return null;
 	}
