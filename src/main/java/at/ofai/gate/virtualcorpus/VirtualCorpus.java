@@ -295,16 +295,12 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public final String getDocumentName(int i) {
-		return documentNames.get(i);
+	public final String getDocumentName(int index) {
+		return documentNames.get(index);
 	}
 
 	@Override
 	public final Document get(int index) {
-		if (index < 0 || index >= documentNames.size()) {
-			throw new IndexOutOfBoundsException(
-					"Index " + index + " not in corpus " + this.getName() + " of size " + documentNames.size());
-		}
 		String documentName = documentNames.get(index);
 		if (isDocumentLoaded(index)) {
 			return documents.get(documentName);
@@ -314,8 +310,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			documents.put(documentName, document);
 			document.addDocumentListener(documentListener);
 			return document;
-		} catch (Exception ex) {
-			throw new GateRuntimeException("Problem retrieving document data for " + documentName, ex);
+		} catch (Exception e) {
+			throw new GateRuntimeException("Problem retrieving document data for " + documentName, e);
 		}
 	}
 
