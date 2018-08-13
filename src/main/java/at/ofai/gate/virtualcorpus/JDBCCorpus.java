@@ -159,13 +159,13 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	@Override
 	public Resource init() throws ResourceInstantiationException {
 		checkValidMimeType();
-		if (hasValue(tableName)) {
+		if (!hasValue(tableName)) {
 			throw new ResourceInstantiationException("tableName must not be empty");
 		}
-		if (hasValue(idColumn)) {
+		if (!hasValue(idColumn)) {
 			throw new ResourceInstantiationException("idColumn must not be empty");
 		}
-		if (hasValue(valueColumn)) {
+		if (!hasValue(valueColumn)) {
 			throw new ResourceInstantiationException("valueColumn must not be empty");
 		}
 		for (String column : valueColumn.split(",")) {
