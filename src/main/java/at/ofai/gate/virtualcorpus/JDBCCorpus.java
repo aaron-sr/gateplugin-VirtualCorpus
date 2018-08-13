@@ -212,17 +212,17 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 				String id = rs.getString(idColumn);
 				if (valueColumns.size() > 1) {
 					for (String column : valueColumns) {
-						String contentName = id + " " + column;
+						String documentName = id + " " + column;
 						Map<String, String> features = new HashMap<>();
 						features.put(JDBC_ID, id);
 						features.put(JDBC_CONTENT_COLUMN, column);
-						documentFeatures.put(contentName, features);
-						documentNames.add(contentName);
+						documentFeatures.put(documentName, features);
+						documentNames.add(documentName);
 					}
 				} else {
 					Map<String, String> features = new HashMap<>();
 					features.put(JDBC_ID, id);
-					features.put(JDBC_CONTENT_COLUMN, valueColumn);
+					features.put(JDBC_CONTENT_COLUMN, valueColumns.get(0));
 					documentFeatures.put(id, features);
 					documentNames.add(id);
 				}
