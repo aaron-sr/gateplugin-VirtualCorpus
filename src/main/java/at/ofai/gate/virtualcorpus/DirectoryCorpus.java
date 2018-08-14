@@ -134,7 +134,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 		try {
 			directory = Files.fileFromURL(directoryURL).getCanonicalFile();
 		} catch (Exception e) {
-			throw new ResourceInstantiationException("directoryURL is not a valid file url");
+			throw new ResourceInstantiationException("directoryURL is not a valid file url", e);
 		}
 
 		if (!directory.isDirectory()) {

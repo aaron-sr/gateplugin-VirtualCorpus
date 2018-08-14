@@ -177,7 +177,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		try {
 			Class.forName(getJdbcDriver());
 		} catch (ClassNotFoundException e) {
-			throw new ResourceInstantiationException("could not load jdbc driver");
+			throw new ResourceInstantiationException("could not load jdbc driver", e);
 		}
 		try {
 			Properties properties = new Properties();
@@ -201,7 +201,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 				valueColumns.clear();
 				valueColumns.addAll(columns);
 			} catch (SQLException e) {
-				throw new ResourceInstantiationException("could not load table columns");
+				throw new ResourceInstantiationException("could not load table columns", e);
 			}
 		}
 
