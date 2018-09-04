@@ -83,7 +83,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	protected String idColumn;
 	protected String valueColumn;
 
-	private List<String> valueColumns = new ArrayList<>();
 	private Map<String, Map<String, String>> documentFeatures = new HashMap<>();
 	private Connection connection = null;
 	private Map<String, PreparedStatement> selectContentStatements;
@@ -167,6 +166,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		if (!hasValue(valueColumn)) {
 			throw new ResourceInstantiationException("valueColumn must not be empty");
 		}
+		List<String> valueColumns = new ArrayList<>();
 		for (String column : valueColumn.split(",")) {
 			valueColumns.add(column.trim());
 		}
@@ -231,9 +231,9 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		}
 		initVirtualCorpus(documentNames);
 		try {
-			selectContentStatements = prepareStatements(SELECT_CONTENT_SQL);
-			insertStatements = prepareStatements(INSERT_SQL);
-			updateContentStatements = prepareStatements(UPDATE_CONTENT_SQL);
+			selectContentStatements = prepareStatements(SELECT_CONTENT_SQL, valueColumns);
+			insertStatements = prepareStatements(INSERT_SQL, valueColumns);
+			updateContentStatements = prepareStatements(UPDATE_CONTENT_SQL, valueColumns);
 		} catch (SQLException e) {
 			throw new ResourceInstantiationException("Could not prepare statement", e);
 		}
@@ -313,10 +313,9 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 
 	@Override
 	protected void updateDocument(Document document) throws Exception {
-		String documentName = document.getName();
-		Map<String, String> features = documentFeatures.get(documentName);
-		String id = features.get(JDBC_ID);
-		String contentColumn = features.get(JDBC_CONTENT_COLUMN);
+		Map<Object, Object> features = document.getFeatures();
+		String id = features.get(JDBC_ID).toString();
+		String contentColumn = features.get(JDBC_CONTENT_COLUMN).toString();
 		PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
 		updateContentStatement.setString(2, id);
 		updateContentStatement.setString(1, export(getExporter(mimeType), document));
@@ -325,10 +324,9 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 
 	@Override
 	protected void deleteDocument(Document document) throws Exception {
-		String documentName = document.getName();
-		Map<String, String> features = documentFeatures.get(documentName);
-		String id = features.get(JDBC_ID);
-		String contentColumn = features.get(JDBC_CONTENT_COLUMN);
+		Map<Object, Object> features = document.getFeatures();
+		String id = features.get(JDBC_ID).toString();
+		String contentColumn = features.get(JDBC_CONTENT_COLUMN).toString();
 		PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
 		updateContentStatement.setString(2, id);
 		updateContentStatement.setString(1, null);
@@ -346,7 +344,8 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		return connection.prepareStatement(query);
 	}
 
-	private Map<String, PreparedStatement> prepareStatements(String query) throws SQLException {
+	private Map<String, PreparedStatement> prepareStatements(String query, List<String> valueColumns)
+			throws SQLException {
 		Map<String, PreparedStatement> statements = new HashMap<>();
 		for (String contentColumn : valueColumns) {
 			String columnQuery = query.replaceAll(Pattern.quote("${tableName}"), tableName);
