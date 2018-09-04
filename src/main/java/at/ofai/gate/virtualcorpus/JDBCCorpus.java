@@ -82,7 +82,6 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	protected String tableName;
 	protected String idColumn;
 	protected String valueColumn;
-	protected String mimeType = "";
 
 	private List<String> valueColumns = new ArrayList<>();
 	private Map<String, Map<String, String>> documentFeatures = new HashMap<>();
