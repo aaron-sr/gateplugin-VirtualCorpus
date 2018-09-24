@@ -8,7 +8,6 @@ import java.util.Map;
 
 import org.apache.log4j.Logger;
 import org.bson.conversions.Bson;
-import org.bson.types.ObjectId;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
@@ -35,9 +34,10 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	private static final long serialVersionUID = -4207705811952799973L;
 	private static Logger logger = Logger.getLogger(MongoDbCorpus.class);
 
-	public static final String MONGODB_COLLECTION_NAME = "mongoDbCollection";
-	public static final String MONGODB_DOCUMENT_ID = "mongoDbDocument";
-	public static final String MONGODB_KEY_NAME = "mongoDbKey";
+	public static final String FEATURE_MONGODB_COLLECTION_NAME = "mongoDbCollection";
+	public static final String FEATURE_MONGODB_DOCUMENT_ID = "mongoDbDocument";
+	public static final String FEATURE_MONGODB_KEY_NAME = "mongoDbKey";
+
 	public static final String MONGODB_ID_KEY_NAME = "_id";
 
 	private String host;
@@ -97,7 +97,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		return databaseName;
 	}
 
-	@CreoleParameter(comment = "The name of the collection (separate multiple values by comma)", defaultValue = "")
+	@CreoleParameter(comment = "The name of the collection (separate multiple values by comma, leave empty for all collections)", defaultValue = "")
 	public void setCollectionName(String collectionName) {
 		this.collectionName = collectionName;
 	}
@@ -106,7 +106,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		return collectionName;
 	}
 
-	@CreoleParameter(comment = "The name of the key (separate multiple values by comma)", defaultValue = "")
+	@CreoleParameter(comment = "The name of the key (separate multiple values by comma, leave empty for all keys)", defaultValue = "")
 	public void setKeyName(String keyName) {
 		this.keyName = keyName;
 	}
@@ -159,19 +159,19 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 
 		List<String> documentNames = new ArrayList<>();
 		for (String collectionName : collectionNames) {
-			MongoCollection<org.bson.Document> collection = database.getCollection(name);
+			MongoCollection<org.bson.Document> collection = database.getCollection(collectionName);
 			MongoCursor<org.bson.Document> iterator = collection.find().iterator();
 			while (iterator.hasNext()) {
 				org.bson.Document document = iterator.next();
-				ObjectId id = document.getObjectId(MONGODB_ID_KEY_NAME);
+				Object id = document.get(MONGODB_ID_KEY_NAME);
 				Collection<String> keys = keyNames != null ? keyNames : document.keySet();
 				for (String key : keys) {
-					if (document.containsKey(key)) {
+					if (document.containsKey(key) && !key.contentEquals(MONGODB_ID_KEY_NAME)) {
 						String documentName = collectionName + "#" + id + "~" + key;
 						Map<String, Object> features = new HashMap<>();
-						features.put(MONGODB_COLLECTION_NAME, collectionName);
-						features.put(MONGODB_DOCUMENT_ID, id);
-						features.put(MONGODB_KEY_NAME, key);
+						features.put(FEATURE_MONGODB_COLLECTION_NAME, collectionName);
+						features.put(FEATURE_MONGODB_DOCUMENT_ID, id);
+						features.put(FEATURE_MONGODB_KEY_NAME, key);
 						documentFeatures.put(documentName, features);
 						documentNames.add(documentName);
 					}
@@ -194,9 +194,9 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	@Override
 	protected Document readDocument(String documentName) throws Exception {
 		Map<String, Object> features = documentFeatures.get(documentName);
-		String collectionName = (String) features.get(MONGODB_COLLECTION_NAME);
-		ObjectId id = (ObjectId) features.get(MONGODB_DOCUMENT_ID);
-		String key = (String) features.get(MONGODB_KEY_NAME);
+		String collectionName = (String) features.get(FEATURE_MONGODB_COLLECTION_NAME);
+		String id = (String) features.get(FEATURE_MONGODB_DOCUMENT_ID);
+		String key = (String) features.get(FEATURE_MONGODB_KEY_NAME);
 
 		String content = database.getCollection(collectionName).find(queryById(id)).first().get(key).toString();
 
@@ -212,9 +212,9 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	@Override
 	protected void createDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
-		String collectionName = (String) features.get(MONGODB_COLLECTION_NAME);
-		ObjectId id = (ObjectId) features.get(MONGODB_DOCUMENT_ID);
-		String key = (String) features.get(MONGODB_KEY_NAME);
+		String collectionName = (String) features.get(FEATURE_MONGODB_COLLECTION_NAME);
+		Object id = features.get(FEATURE_MONGODB_DOCUMENT_ID);
+		String key = (String) features.get(FEATURE_MONGODB_KEY_NAME);
 
 		MongoCollection<org.bson.Document> collection = database.getCollection(collectionName);
 		org.bson.Document mongoDocument = collection.find(queryById(id)).first();
@@ -225,16 +225,16 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 			mongoDocument.put(key, export(getExporter(mimeType), document));
 			collection.insertOne(mongoDocument);
 			id = mongoDocument.getObjectId(MONGODB_ID_KEY_NAME);
-			features.put(MONGODB_DOCUMENT_ID, id);
+			features.put(FEATURE_MONGODB_DOCUMENT_ID, id);
 		}
 	}
 
 	@Override
 	protected void updateDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
-		String collectionName = (String) features.get(MONGODB_COLLECTION_NAME);
-		ObjectId id = (ObjectId) features.get(MONGODB_DOCUMENT_ID);
-		String key = (String) features.get(MONGODB_KEY_NAME);
+		String collectionName = (String) features.get(FEATURE_MONGODB_COLLECTION_NAME);
+		Object id = features.get(FEATURE_MONGODB_DOCUMENT_ID);
+		String key = (String) features.get(FEATURE_MONGODB_KEY_NAME);
 
 		database.getCollection(collectionName).find(queryById(id)).first().put(key,
 				export(getExporter(mimeType), document));
@@ -243,9 +243,9 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	@Override
 	protected void deleteDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
-		String collectionName = (String) features.get(MONGODB_COLLECTION_NAME);
-		ObjectId id = (ObjectId) features.get(MONGODB_DOCUMENT_ID);
-		String key = (String) features.get(MONGODB_KEY_NAME);
+		String collectionName = (String) features.get(FEATURE_MONGODB_COLLECTION_NAME);
+		Object id = features.get(FEATURE_MONGODB_DOCUMENT_ID);
+		String key = (String) features.get(FEATURE_MONGODB_KEY_NAME);
 
 		database.getCollection(collectionName).find(queryById(id)).first().remove(key);
 	}
@@ -255,7 +255,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		throw new GateRuntimeException("renaming document is not supported");
 	}
 
-	private Bson queryById(ObjectId id) {
+	private Bson queryById(Object id) {
 		BasicDBObject query = new BasicDBObject();
 		query.put(MONGODB_ID_KEY_NAME, id);
 		return query;

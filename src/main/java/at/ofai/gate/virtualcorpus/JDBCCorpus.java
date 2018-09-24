@@ -66,8 +66,8 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private static final long serialVersionUID = -8485133333415382902L;
 	private static Logger logger = Logger.getLogger(JDBCCorpus.class);
 
-	public static final String JDBC_ID = "jdbcId";
-	public static final String JDBC_CONTENT_COLUMN = "jdbcContentColumn";
+	public static final String FEATURE_JDBC_ID = "jdbcId";
+	public static final String FEATURE_JDBC_CONTENT_COLUMN = "jdbcContentColumn";
 
 	private static final String SELECT_ID_SQL = "SELECT ${idColumn} FROM ${tableName}";
 	private static final String SELECT_CONTENT_SQL = "SELECT ${valueColumn} FROM ${tableName} WHERE ${idColumn} = ?";
@@ -213,15 +213,15 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 					for (String column : valueColumns) {
 						String documentName = id + " " + column;
 						Map<String, String> features = new HashMap<>();
-						features.put(JDBC_ID, id);
-						features.put(JDBC_CONTENT_COLUMN, column);
+						features.put(FEATURE_JDBC_ID, id);
+						features.put(FEATURE_JDBC_CONTENT_COLUMN, column);
 						documentFeatures.put(documentName, features);
 						documentNames.add(documentName);
 					}
 				} else {
 					Map<String, String> features = new HashMap<>();
-					features.put(JDBC_ID, id);
-					features.put(JDBC_CONTENT_COLUMN, valueColumns.get(0));
+					features.put(FEATURE_JDBC_ID, id);
+					features.put(FEATURE_JDBC_CONTENT_COLUMN, valueColumns.get(0));
 					documentFeatures.put(id, features);
 					documentNames.add(id);
 				}
@@ -265,8 +265,8 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	@Override
 	protected Document readDocument(String documentName) throws Exception {
 		Map<String, String> features = documentFeatures.get(documentName);
-		String id = features.get(JDBC_ID);
-		String contentColumn = features.get(JDBC_CONTENT_COLUMN);
+		String id = features.get(FEATURE_JDBC_ID);
+		String contentColumn = features.get(FEATURE_JDBC_CONTENT_COLUMN);
 		PreparedStatement selectContentStatement = selectContentStatements.get(contentColumn);
 		selectContentStatement.setString(1, id);
 		ResultSet rs = selectContentStatement.executeQuery();
@@ -292,8 +292,8 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	@Override
 	protected void createDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
-		String id = features.get(JDBC_ID).toString();
-		String contentColumn = features.get(JDBC_CONTENT_COLUMN).toString();
+		String id = features.get(FEATURE_JDBC_ID).toString();
+		String contentColumn = features.get(FEATURE_JDBC_CONTENT_COLUMN).toString();
 
 		PreparedStatement selectContentStatement = selectContentStatements.get(contentColumn);
 		selectContentStatement.setString(1, id);
@@ -314,8 +314,8 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	@Override
 	protected void updateDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
-		String id = features.get(JDBC_ID).toString();
-		String contentColumn = features.get(JDBC_CONTENT_COLUMN).toString();
+		String id = features.get(FEATURE_JDBC_ID).toString();
+		String contentColumn = features.get(FEATURE_JDBC_CONTENT_COLUMN).toString();
 		PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
 		updateContentStatement.setString(2, id);
 		updateContentStatement.setString(1, export(getExporter(mimeType), document));
@@ -325,8 +325,8 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	@Override
 	protected void deleteDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
-		String id = features.get(JDBC_ID).toString();
-		String contentColumn = features.get(JDBC_CONTENT_COLUMN).toString();
+		String id = features.get(FEATURE_JDBC_ID).toString();
+		String contentColumn = features.get(FEATURE_JDBC_CONTENT_COLUMN).toString();
 		PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
 		updateContentStatement.setString(2, id);
 		updateContentStatement.setString(1, null);
