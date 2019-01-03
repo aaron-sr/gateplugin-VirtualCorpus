@@ -27,6 +27,7 @@ import gate.corpora.DocumentImpl;
 import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
+import gate.event.FeatureMapListener;
 import gate.util.GateRuntimeException;
 
 @CreoleResource(name = "MongoDbCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by GATE documents stored in a MongoDB")
@@ -38,7 +39,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	public static final String FEATURE_MONGODB_DOCUMENT_ID = "mongoDbDocument";
 	public static final String FEATURE_MONGODB_KEY_NAME = "mongoDbKey";
 
-	public static final String MONGODB_ID_KEY_NAME = "_id";
+	public static final String ID_KEY_NAME = "_id";
 
 	private String host;
 	private Integer port;
@@ -46,7 +47,8 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	private String password;
 	private String databaseName;
 	private String collectionName;
-	private String keyName;
+	private String contentKeys;
+	private String featureKeys;
 
 	private Map<String, Map<String, Object>> documentFeatures = new HashMap<>();
 	private MongoClient client;
@@ -106,13 +108,22 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		return collectionName;
 	}
 
-	@CreoleParameter(comment = "The name of the key (separate multiple values by comma, leave empty for all keys)", defaultValue = "")
-	public void setKeyName(String keyName) {
-		this.keyName = keyName;
+	@CreoleParameter(comment = "The name of the content keys (separate multiple values by comma, leave empty for all keys)", defaultValue = "")
+	public void setContentKeys(String contentKeys) {
+		this.contentKeys = contentKeys;
 	}
 
-	public String getKeyName() {
-		return keyName;
+	public String getContentKeys() {
+		return contentKeys;
+	}
+
+	@CreoleParameter(comment = "The name of the feature keys (separate multiple values by comma)", defaultValue = "")
+	public void setFeatureKeys(String featureKeys) {
+		this.featureKeys = featureKeys;
+	}
+
+	public String getFeatureKeys() {
+		return featureKeys;
 	}
 
 	@Override
@@ -140,21 +151,25 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		}
 		database = client.getDatabase(databaseName);
 
-		List<String> collectionNames = new ArrayList<>();
+		List<String> collectionNames;
 		if (hasValue(collectionName)) {
-			for (String name : collectionName.split(",")) {
-				collectionNames.add(name.trim());
-			}
+			collectionNames = splitUserInput(collectionName);
 		} else {
+			collectionNames = new ArrayList<>();
 			database.listCollectionNames().into(collectionNames);
 		}
-		List<String> keyNames = new ArrayList<>();
-		if (hasValue(keyName)) {
-			for (String name : keyName.split(",")) {
-				keyNames.add(name.trim());
-			}
+		List<String> contentKeys;
+		if (hasValue(this.contentKeys)) {
+			contentKeys = splitUserInput(this.contentKeys);
 		} else {
-			keyNames = null;
+			contentKeys = null;
+		}
+
+		List<String> featureKeys;
+		if (hasValue(this.featureKeys)) {
+			featureKeys = splitUserInput(this.featureKeys);
+		} else {
+			featureKeys = new ArrayList<>();
 		}
 
 		List<String> documentNames = new ArrayList<>();
@@ -163,10 +178,10 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 			MongoCursor<org.bson.Document> iterator = collection.find().iterator();
 			while (iterator.hasNext()) {
 				org.bson.Document document = iterator.next();
-				Object id = document.get(MONGODB_ID_KEY_NAME);
-				Collection<String> keys = keyNames != null ? keyNames : document.keySet();
+				Object id = document.get(ID_KEY_NAME);
+				Collection<String> keys = contentKeys != null ? contentKeys : document.keySet();
 				for (String key : keys) {
-					if (document.containsKey(key) && !key.contentEquals(MONGODB_ID_KEY_NAME)) {
+					if (document.containsKey(key) && !key.contentEquals(ID_KEY_NAME) && !featureKeys.contains(key)) {
 						String documentName = collectionName + "#" + id + "~" + key;
 						Map<String, Object> features = new HashMap<>();
 						features.put(FEATURE_MONGODB_COLLECTION_NAME, collectionName);
@@ -195,10 +210,10 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	protected Document readDocument(String documentName) throws Exception {
 		Map<String, Object> features = documentFeatures.get(documentName);
 		String collectionName = (String) features.get(FEATURE_MONGODB_COLLECTION_NAME);
-		String id = (String) features.get(FEATURE_MONGODB_DOCUMENT_ID);
+		Object id = features.get(FEATURE_MONGODB_DOCUMENT_ID);
 		String key = (String) features.get(FEATURE_MONGODB_KEY_NAME);
 
-		String content = database.getCollection(collectionName).find(queryById(id)).first().get(key).toString();
+		Object content = database.getCollection(collectionName).find(queryById(id)).first().get(key);
 
 		FeatureMap params = Factory.newFeatureMap();
 		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content != null ? content : "");
@@ -206,6 +221,33 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
 		Document document = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, documentName);
 		document.getFeatures().putAll(features);
+		document.getFeatures().put("gate.SourceURL", "created from MongoDB");
+		List<String> featureKeys = splitUserInput(this.featureKeys);
+		if (!featureKeys.isEmpty()) {
+			for (String featureKey : featureKeys) {
+				Object featureValue = database.getCollection(collectionName).find(queryById(id)).first()
+						.get(featureKey);
+				document.getFeatures().put(featureKey, featureValue);
+			}
+			if (!readonly) {
+				document.getFeatures().addFeatureMapListener(new FeatureMapListener() {
+
+					@Override
+					public void featureMapUpdated() {
+						for (String feature : featureKeys) {
+							FeatureMap featureMap = document.getFeatures();
+							Object value;
+							if (featureMap.containsKey(feature)) {
+								value = document.getFeatures().get(feature);
+							} else {
+								value = null;
+							}
+							database.getCollection(collectionName).find(queryById(id)).first().put(feature, value);
+						}
+					}
+				});
+			}
+		}
 		return document;
 	}
 
@@ -224,7 +266,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 			mongoDocument = new org.bson.Document();
 			mongoDocument.put(key, export(getExporter(mimeType), document));
 			collection.insertOne(mongoDocument);
-			id = mongoDocument.getObjectId(MONGODB_ID_KEY_NAME);
+			id = mongoDocument.getObjectId(ID_KEY_NAME);
 			features.put(FEATURE_MONGODB_DOCUMENT_ID, id);
 		}
 	}
@@ -257,7 +299,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 
 	private Bson queryById(Object id) {
 		BasicDBObject query = new BasicDBObject();
-		query.put(MONGODB_ID_KEY_NAME, id);
+		query.put(ID_KEY_NAME, id);
 		return query;
 	}
 

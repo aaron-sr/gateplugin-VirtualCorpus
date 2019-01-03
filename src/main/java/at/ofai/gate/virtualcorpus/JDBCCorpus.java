@@ -45,6 +45,7 @@ import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
+import gate.event.FeatureMapListener;
 import gate.util.GateRuntimeException;
 
 /**
@@ -69,10 +70,10 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	public static final String FEATURE_JDBC_ID = "jdbcId";
 	public static final String FEATURE_JDBC_CONTENT_COLUMN = "jdbcContentColumn";
 
-	private static final String SELECT_ID_SQL = "SELECT ${idColumn} FROM ${tableName}";
-	private static final String SELECT_CONTENT_SQL = "SELECT ${valueColumn} FROM ${tableName} WHERE ${idColumn} = ?";
+	private static final String SELECT_IDS_SQL = "SELECT ${idColumn} FROM ${tableName}";
+	private static final String SELECT_SQL = "SELECT ${valueColumn} FROM ${tableName} WHERE ${idColumn} = ?";
 	private static final String INSERT_SQL = "INSERT INTO ${tableName} (${idColumn}, ${valueColumn}) VALUES (?, ?)";
-	private static final String UPDATE_CONTENT_SQL = "UPDATE ${tableName} SET ${valueColumn} = ? WHERE ${idColumn} = ?";
+	private static final String UPDATE_SQL = "UPDATE ${tableName} SET ${valueColumn} = ? WHERE ${idColumn} = ?";
 	private static final String ALL_COLUMNS = "*";
 
 	protected String jdbcDriver;
@@ -81,13 +82,14 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	protected String jdbcPassword = "";
 	protected String tableName;
 	protected String idColumn;
-	protected String valueColumn;
+	protected String contentColumns;
+	protected String featureColumns;
 
-	private Map<String, Map<String, String>> documentFeatures = new HashMap<>();
+	private Map<String, Map<String, Object>> documentFeatures = new HashMap<>();
 	private Connection connection = null;
-	private Map<String, PreparedStatement> selectContentStatements;
+	private Map<String, PreparedStatement> selectStatements;
 	private Map<String, PreparedStatement> insertStatements;
-	private Map<String, PreparedStatement> updateContentStatements;
+	private Map<String, PreparedStatement> updateStatements;
 
 	@CreoleParameter(comment = "The JDBC driver to use", defaultValue = "org.sqlite.JDBC")
 	public void setJdbcDriver(String driver) {
@@ -145,13 +147,22 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		return idColumn;
 	}
 
-	@CreoleParameter(comment = "The document content column (separate multiple values by comma, * for all columns)", defaultValue = "")
-	public void setValueColumn(String valueColumn) {
-		this.valueColumn = valueColumn;
+	@CreoleParameter(comment = "The document content columns (separate multiple values by comma, * for all columns)", defaultValue = "*")
+	public void setContentColumns(String contentColumns) {
+		this.contentColumns = contentColumns;
 	}
 
-	public String getValueColumn() {
-		return valueColumn;
+	public String getContentColumns() {
+		return contentColumns;
+	}
+
+	@CreoleParameter(comment = "The document feature columns (separate multiple values by comma)", defaultValue = "")
+	public void setFeatureColumns(String featureColumns) {
+		this.featureColumns = featureColumns;
+	}
+
+	public String getFeatureColumns() {
+		return featureColumns;
 	}
 
 	@Override
@@ -163,16 +174,10 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		if (!hasValue(idColumn)) {
 			throw new ResourceInstantiationException("idColumn must not be empty");
 		}
-		if (!hasValue(valueColumn)) {
+		if (!hasValue(contentColumns)) {
 			throw new ResourceInstantiationException("valueColumn must not be empty");
 		}
-		List<String> valueColumns = new ArrayList<>();
-		for (String column : valueColumn.split(",")) {
-			valueColumns.add(column.trim());
-		}
-		if (valueColumns.contains(idColumn.trim())) {
-			throw new ResourceInstantiationException("valueColumn cannot be idColumn");
-		}
+
 		try {
 			Class.forName(getJdbcDriver());
 		} catch (ClassNotFoundException e) {
@@ -193,62 +198,80 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		} catch (Exception e) {
 			throw new ResourceInstantiationException("Could not get driver/connection", e);
 		}
-		if (valueColumns.contains(ALL_COLUMNS)) {
+		List<String> tableColumns;
+		try {
+			tableColumns = getTableColumnNames(tableName);
+		} catch (SQLException e) {
+			throw new ResourceInstantiationException("Could not get column names", e);
+		}
+		if (!tableColumns.contains(idColumn)) {
+			throw new ResourceInstantiationException("id column does not exist");
+		}
+		List<String> contentColumns = splitUserInput(this.contentColumns);
+		if (contentColumns.contains(idColumn.trim())) {
+			throw new ResourceInstantiationException("contentColumns cannot contain idColumn");
+		}
+		List<String> featureColumns = splitUserInput(this.featureColumns);
+		if (featureColumns.contains(idColumn.trim())) {
+			throw new ResourceInstantiationException("featureColumns cannot contain idColumn");
+		}
+		if (contentColumns.contains(ALL_COLUMNS)) {
 			try {
-				List<String> columns = getColumns(tableName);
+				List<String> columns = getTableColumnNames(tableName);
 				columns.remove(idColumn);
-				valueColumns.clear();
-				valueColumns.addAll(columns);
+				columns.removeAll(featureColumns);
+				contentColumns.clear();
+				contentColumns.addAll(columns);
 			} catch (SQLException e) {
-				throw new ResourceInstantiationException("could not load table columns", e);
+				throw new ResourceInstantiationException("Could not load table columns", e);
 			}
+		}
+		if (!tableColumns.containsAll(contentColumns)) {
+			throw new ResourceInstantiationException("content columns does not exist");
+		}
+		if (!tableColumns.containsAll(featureColumns)) {
+			throw new ResourceInstantiationException("feature columns does not exist");
 		}
 
 		List<String> documentNames = new ArrayList<>();
 		try {
-			ResultSet rs = prepareStatement(SELECT_ID_SQL).executeQuery();
+			ResultSet rs = prepareStatement(SELECT_IDS_SQL).executeQuery();
 			while (rs.next()) {
-				String id = rs.getString(idColumn);
-				if (valueColumns.size() > 1) {
-					for (String column : valueColumns) {
+				Object id = rs.getObject(idColumn);
+				if (contentColumns.size() > 1) {
+					for (String column : contentColumns) {
 						String documentName = id + " " + column;
-						Map<String, String> features = new HashMap<>();
+						Map<String, Object> features = new HashMap<>();
 						features.put(FEATURE_JDBC_ID, id);
 						features.put(FEATURE_JDBC_CONTENT_COLUMN, column);
 						documentFeatures.put(documentName, features);
 						documentNames.add(documentName);
 					}
 				} else {
-					Map<String, String> features = new HashMap<>();
+					Map<String, Object> features = new HashMap<>();
 					features.put(FEATURE_JDBC_ID, id);
-					features.put(FEATURE_JDBC_CONTENT_COLUMN, valueColumns.get(0));
-					documentFeatures.put(id, features);
-					documentNames.add(id);
+					features.put(FEATURE_JDBC_CONTENT_COLUMN, contentColumns.get(0));
+					documentFeatures.put(id.toString(), features);
+					documentNames.add(id.toString());
 				}
 			}
 		} catch (SQLException e) {
-			throw new ResourceInstantiationException("Problem accessing database", e);
+			throw new ResourceInstantiationException("Could not read ids", e);
 		}
 		initVirtualCorpus(documentNames);
 		try {
-			selectContentStatements = prepareStatements(SELECT_CONTENT_SQL, valueColumns);
-			insertStatements = prepareStatements(INSERT_SQL, valueColumns);
-			updateContentStatements = prepareStatements(UPDATE_CONTENT_SQL, valueColumns);
+			selectStatements = prepareStatements(SELECT_SQL, contentColumns);
+			insertStatements = prepareStatements(INSERT_SQL, contentColumns);
+			updateStatements = prepareStatements(UPDATE_SQL, contentColumns);
+			if (!featureColumns.isEmpty()) {
+				selectStatements.putAll(prepareStatements(SELECT_SQL, featureColumns));
+				updateStatements.putAll(prepareStatements(UPDATE_SQL, featureColumns));
+			}
 		} catch (SQLException e) {
 			throw new ResourceInstantiationException("Could not prepare statement", e);
 		}
 
 		return this;
-	}
-
-	private List<String> getColumns(String tableName) throws SQLException {
-		List<String> columns = new ArrayList<>();
-		ResultSet resultSet = connection.getMetaData().getColumns(null, null, tableName, null);
-		while (resultSet.next()) {
-			columns.add(resultSet.getString("COLUMN_NAME"));
-		}
-
-		return columns;
 	}
 
 	@Override
@@ -264,21 +287,10 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 
 	@Override
 	protected Document readDocument(String documentName) throws Exception {
-		Map<String, String> features = documentFeatures.get(documentName);
-		String id = features.get(FEATURE_JDBC_ID);
-		String contentColumn = features.get(FEATURE_JDBC_CONTENT_COLUMN);
-		PreparedStatement selectContentStatement = selectContentStatements.get(contentColumn);
-		selectContentStatement.setString(1, id);
-		ResultSet rs = selectContentStatement.executeQuery();
-		if (!rs.next()) {
-			throw new GateRuntimeException("Document not found int the DB table: " + documentName);
-		}
-
-		String content = rs.getString(1);
-
-		if (rs.next()) {
-			throw new GateRuntimeException("More than one row found for document name " + documentName);
-		}
+		Map<String, Object> features = documentFeatures.get(documentName);
+		Object id = features.get(FEATURE_JDBC_ID);
+		String contentColumn = (String) features.get(FEATURE_JDBC_CONTENT_COLUMN);
+		String content = readColumnContent(id, contentColumn);
 
 		FeatureMap params = Factory.newFeatureMap();
 		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content != null ? content : "");
@@ -286,51 +298,66 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
 		Document document = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, documentName);
 		document.getFeatures().putAll(features);
+		document.getFeatures().put("gate.SourceURL", "created from JDBC");
+		List<String> featureColumns = splitUserInput(this.featureColumns);
+		if (!featureColumns.isEmpty()) {
+			for (String featureColumn : featureColumns) {
+				Object featureValue = readColumnContent(id, featureColumn);
+				document.getFeatures().put(featureColumn, featureValue);
+			}
+			if (!readonly) {
+				document.getFeatures().addFeatureMapListener(new FeatureMapListener() {
+
+					@Override
+					public void featureMapUpdated() {
+						for (String feature : featureColumns) {
+							FeatureMap featureMap = document.getFeatures();
+							Object value;
+							if (featureMap.containsKey(feature)) {
+								value = document.getFeatures().get(feature);
+							} else {
+								value = null;
+							}
+							try {
+								updateColumnContent(id, feature, value);
+							} catch (SQLException e) {
+								throw new GateRuntimeException(e);
+							}
+						}
+					}
+				});
+			}
+		}
 		return document;
 	}
 
 	@Override
 	protected void createDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
-		String id = features.get(FEATURE_JDBC_ID).toString();
-		String contentColumn = features.get(FEATURE_JDBC_CONTENT_COLUMN).toString();
+		Object id = features.get(FEATURE_JDBC_ID);
+		String contentColumn = (String) features.get(FEATURE_JDBC_CONTENT_COLUMN);
 
-		PreparedStatement selectContentStatement = selectContentStatements.get(contentColumn);
-		selectContentStatement.setString(1, id);
-		ResultSet rs = selectContentStatement.executeQuery();
-		if (rs.next()) {
-			PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
-			updateContentStatement.setString(2, id);
-			updateContentStatement.setString(1, export(getExporter(mimeType), document));
-			updateContentStatement.executeUpdate();
+		if (existColumn(id, contentColumn)) {
+			updateColumnContent(id, contentColumn, export(getExporter(mimeType), document));
 		} else {
-			PreparedStatement insertStatement = insertStatements.get(contentColumn);
-			insertStatement.setString(1, id);
-			insertStatement.setString(2, export(getExporter(mimeType), document));
-			insertStatement.executeUpdate();
+			insertColumnContent(id, contentColumn, export(getExporter(mimeType), document));
 		}
 	}
 
 	@Override
 	protected void updateDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
-		String id = features.get(FEATURE_JDBC_ID).toString();
-		String contentColumn = features.get(FEATURE_JDBC_CONTENT_COLUMN).toString();
-		PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
-		updateContentStatement.setString(2, id);
-		updateContentStatement.setString(1, export(getExporter(mimeType), document));
-		updateContentStatement.executeUpdate();
+		Object id = features.get(FEATURE_JDBC_ID);
+		String contentColumn = (String) features.get(FEATURE_JDBC_CONTENT_COLUMN);
+		updateColumnContent(id, contentColumn, export(getExporter(mimeType), document));
 	}
 
 	@Override
 	protected void deleteDocument(Document document) throws Exception {
 		Map<Object, Object> features = document.getFeatures();
-		String id = features.get(FEATURE_JDBC_ID).toString();
-		String contentColumn = features.get(FEATURE_JDBC_CONTENT_COLUMN).toString();
-		PreparedStatement updateContentStatement = updateContentStatements.get(contentColumn);
-		updateContentStatement.setString(2, id);
-		updateContentStatement.setString(1, null);
-		updateContentStatement.executeUpdate();
+		Object id = features.get(FEATURE_JDBC_ID);
+		String contentColumn = (String) features.get(FEATURE_JDBC_CONTENT_COLUMN);
+		updateColumnContent(id, contentColumn, null);
 	}
 
 	@Override
@@ -355,6 +382,53 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 			statements.put(contentColumn, statement);
 		}
 		return statements;
+	}
+
+	private List<String> getTableColumnNames(String tableName) throws SQLException {
+		List<String> columns = new ArrayList<>();
+		ResultSet resultSet = connection.getMetaData().getColumns(null, null, tableName, null);
+		while (resultSet.next()) {
+			columns.add(resultSet.getString("COLUMN_NAME"));
+		}
+		return columns;
+	}
+
+	private boolean existColumn(Object id, String column) throws SQLException {
+		PreparedStatement statement = selectStatements.get(column);
+		statement.setObject(1, id);
+		ResultSet rs = statement.executeQuery();
+		return rs.next();
+	}
+
+	@SuppressWarnings("unchecked")
+	private <R> R readColumnContent(Object id, String column) throws SQLException {
+		PreparedStatement statement = selectStatements.get(column);
+		statement.setObject(1, id);
+		ResultSet rs = statement.executeQuery();
+		if (!rs.next()) {
+			throw new GateRuntimeException("No row found in table: " + id);
+		}
+
+		Object content = rs.getObject(1);
+
+		if (rs.next()) {
+			throw new GateRuntimeException("More than one row found in table: " + id);
+		}
+		return (R) content;
+	}
+
+	private void updateColumnContent(Object id, String column, Object value) throws SQLException {
+		PreparedStatement updateContentStatement = updateStatements.get(column);
+		updateContentStatement.setObject(1, value);
+		updateContentStatement.setObject(2, id);
+		updateContentStatement.executeUpdate();
+	}
+
+	private void insertColumnContent(Object id, String column, String value) throws SQLException {
+		PreparedStatement updateContentStatement = insertStatements.get(column);
+		updateContentStatement.setObject(1, id);
+		updateContentStatement.setObject(2, value);
+		updateContentStatement.executeUpdate();
 	}
 
 }

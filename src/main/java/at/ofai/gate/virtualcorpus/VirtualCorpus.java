@@ -809,4 +809,12 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 				+ this.getClass();
 	}
 
+	protected final List<String> splitUserInput(String string) {
+		List<String> values = new ArrayList<>();
+		for (String value : string.split(",")) {
+			values.add(value.trim());
+		}
+		return values;
+	}
+
 }
