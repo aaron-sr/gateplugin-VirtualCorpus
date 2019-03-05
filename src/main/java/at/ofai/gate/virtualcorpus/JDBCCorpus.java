@@ -81,9 +81,9 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private static final String ALL_COLUMNS = "*";
 
 	protected String jdbcDriver;
-	protected String jdbcUrl = "";
-	protected String jdbcUser = "";
-	protected String jdbcPassword = "";
+	protected String jdbcUrl;
+	protected String jdbcUser;
+	protected String jdbcPassword;
 	protected String tableName;
 	protected String idColumn;
 	protected String contentColumns;
@@ -94,6 +94,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private List<Object> loadedIds = new ArrayList<>();
 	private Map<String, Map<String, Object>> documentFeatures = new HashMap<>();
 	private Map<Map<String, Object>, String> documentFeaturesReversed = new HashMap<>();
+	private Map<Document, FeatureMapListener> featureUpdaters = new HashMap<>();
 	private Connection connection = null;
 	private List<String> columns;
 	private List<String> contentColumnList;
@@ -177,7 +178,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		return featureColumns;
 	}
 
-	@CreoleParameter(comment = "preload n more documents, if a document loaded (e.g. usefull for batch mode)", defaultValue = "10")
+	@CreoleParameter(comment = "preload n more documents, if a document loaded (e.g. usefull for batch mode)", defaultValue = "0")
 	public void setPreloadDocuments(Integer preloadDocuments) {
 		this.preloadDocuments = preloadDocuments;
 	}
@@ -368,7 +369,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 						document.getFeatures().put(featureColumn, featureValue);
 					}
 					if (!readonly) {
-						document.getFeatures().addFeatureMapListener(new FeatureMapListener() {
+						FeatureMapListener featureUpdater = new FeatureMapListener() {
 
 							@Override
 							public void featureMapUpdated() {
@@ -387,7 +388,9 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 									}
 								}
 							}
-						});
+						};
+						document.getFeatures().addFeatureMapListener(featureUpdater);
+						featureUpdaters.put(document, featureUpdater);
 					}
 				}
 				readDocuments.put(readDocumentName, document);
@@ -411,9 +414,10 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 
 	@Override
 	protected void documentUnloaded(Document document) {
-		Map<Object, Object> features = document.getFeatures();
+		FeatureMap features = document.getFeatures();
 		Object id = features.get(FEATURE_JDBC_ID);
 		loadedIds.remove(id);
+		features.removeFeatureMapListener(featureUpdaters.remove(document));
 	}
 
 	@Override
