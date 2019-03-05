@@ -330,18 +330,17 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		Map<String, Object> features = documentFeatures.get(documentName);
 		Object id = features.get(FEATURE_JDBC_ID);
 
-		List<Object> ids = new ArrayList<Object>();
-
+		List<Object> preloadIds = new ArrayList<Object>();
 		for (int i = allIds.indexOf(id) + 1; i < allIds.size(); i++) {
-			if (ids.size() >= preloadDocuments) {
+			if ((preloadIds.size() + 1) * contentColumnList.size() >= preloadDocuments) {
 				break;
 			}
 			if (!loadedIds.contains(id)) {
-				ids.add(allIds.get(i));
+				preloadIds.add(allIds.get(i));
 			}
 		}
 
-		Map<Object, Map<String, Object>> rowValues = readRows(id, ids);
+		Map<Object, Map<String, Object>> rowValues = readRows(id, preloadIds);
 		Map<String, Document> readDocuments = new LinkedHashMap<String, Document>();
 
 		for (Entry<Object, Map<String, Object>> entry : rowValues.entrySet()) {
