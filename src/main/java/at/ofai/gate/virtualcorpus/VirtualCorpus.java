@@ -292,6 +292,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		document.addDocumentListener(documentListener);
 	}
 
+	protected void documentUnloaded(Document document) {
+	}
+
 	@Override
 	public final boolean isDocumentLoaded(int index) {
 		return documents.containsKey(documentNames.get(index));

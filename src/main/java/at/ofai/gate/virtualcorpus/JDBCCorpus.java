@@ -27,6 +27,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -73,7 +74,8 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	public static final String FEATURE_JDBC_CONTENT_COLUMN = "jdbcContentColumn";
 
 	private static final String SELECT_IDS_SQL = "SELECT ${idColumn} FROM ${tableName}";
-	private static final String SELECT_SQL = "SELECT ${columns} FROM ${tableName} WHERE ${idColumn} = ?";
+	private static final String EXIST_ID_SQL = "SELECT 1 FROM ${tableName} WHERE ${idColumn} = ?";
+	private static final String SELECT_SQL = "SELECT  ${idColumn}, ${columns} FROM ${tableName} WHERE ${idColumn} IN (? ${otherIdMarks})";
 	private static final String INSERT_SQL = "INSERT INTO ${tableName} (${idColumn}, ${valueColumn}) VALUES (?, ?)";
 	private static final String UPDATE_SQL = "UPDATE ${tableName} SET ${valueColumn} = ? WHERE ${idColumn} = ?";
 	private static final String ALL_COLUMNS = "*";
@@ -86,7 +88,10 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	protected String idColumn;
 	protected String contentColumns;
 	protected String featureColumns;
+	protected Integer preloadDocuments;
 
+	private List<Object> allIds = new ArrayList<>();
+	private List<Object> loadedIds = new ArrayList<>();
 	private Map<String, Map<String, Object>> documentFeatures = new HashMap<>();
 	private Map<Map<String, Object>, String> documentFeaturesReversed = new HashMap<>();
 	private Connection connection = null;
@@ -94,6 +99,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	private List<String> contentColumnList;
 	private List<String> featureColumnList;
 	private PreparedStatement selectStatement;
+	private PreparedStatement existStatement;
 	private Map<String, PreparedStatement> insertStatements;
 	private Map<String, PreparedStatement> updateStatements;
 
@@ -169,6 +175,15 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 
 	public String getFeatureColumns() {
 		return featureColumns;
+	}
+
+	@CreoleParameter(comment = "preload n more documents, if a document loaded (e.g. usefull for batch mode)", defaultValue = "10")
+	public void setPreloadDocuments(Integer preloadDocuments) {
+		this.preloadDocuments = preloadDocuments;
+	}
+
+	public Integer getPreloadDocuments() {
+		return preloadDocuments;
 	}
 
 	@Override
@@ -255,6 +270,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 
 		try {
 			selectStatement = prepareStatement(SELECT_SQL);
+			existStatement = prepareStatement(EXIST_ID_SQL);
 			insertStatements = prepareStatements(INSERT_SQL, contentColumns);
 			updateStatements = prepareStatements(UPDATE_SQL, contentColumns);
 			if (!featureColumns.isEmpty()) {
@@ -269,6 +285,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 			ResultSet rs = prepareStatement(SELECT_IDS_SQL).executeQuery();
 			while (rs.next()) {
 				Object id = rs.getObject(idColumn);
+				allIds.add(id);
 				if (contentColumns.size() > 1) {
 					for (String column : contentColumns) {
 						String documentName = id + " " + column;
@@ -313,54 +330,70 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		Map<String, Object> features = documentFeatures.get(documentName);
 		Object id = features.get(FEATURE_JDBC_ID);
 
-		Map<String, Object> values = readRow(id);
+		List<Object> ids = new ArrayList<Object>();
 
+		for (int i = allIds.indexOf(id) + 1; i < allIds.size(); i++) {
+			if (ids.size() >= preloadDocuments) {
+				break;
+			}
+			if (!loadedIds.contains(id)) {
+				ids.add(allIds.get(i));
+			}
+		}
+
+		Map<Object, Map<String, Object>> rowValues = readRows(id, ids);
 		Map<String, Document> readDocuments = new LinkedHashMap<String, Document>();
-		for (String contentColumn : contentColumnList) {
-			Map<String, Object> readFeatures = new HashMap<>();
-			readFeatures.put(FEATURE_JDBC_ID, id);
-			readFeatures.put(FEATURE_JDBC_CONTENT_COLUMN, contentColumn);
-			String readDocumentName = documentFeaturesReversed.get(readFeatures);
 
-			Object content = values.get(contentColumn);
+		for (Entry<Object, Map<String, Object>> entry : rowValues.entrySet()) {
+			Object readId = entry.getKey();
+			Map<String, Object> values = entry.getValue();
+			for (String contentColumn : contentColumnList) {
+				Map<String, Object> readFeatures = new HashMap<>();
+				readFeatures.put(FEATURE_JDBC_ID, readId);
+				readFeatures.put(FEATURE_JDBC_CONTENT_COLUMN, contentColumn);
+				String readDocumentName = documentFeaturesReversed.get(readFeatures);
 
-			FeatureMap params = Factory.newFeatureMap();
-			params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content != null ? content : "");
-			params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
-			params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
-			Document document = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null,
-					readDocumentName);
-			document.getFeatures().putAll(features);
-			document.getFeatures().put("gate.SourceURL", "created from JDBC");
-			if (!featureColumnList.isEmpty()) {
-				for (String featureColumn : featureColumnList) {
-					Object featureValue = values.get(featureColumn);
-					document.getFeatures().put(featureColumn, featureValue);
-				}
-				if (!readonly) {
-					document.getFeatures().addFeatureMapListener(new FeatureMapListener() {
+				Object content = values.get(contentColumn);
 
-						@Override
-						public void featureMapUpdated() {
-							for (String feature : featureColumnList) {
-								FeatureMap featureMap = document.getFeatures();
-								Object value;
-								if (featureMap.containsKey(feature)) {
-									value = document.getFeatures().get(feature);
-								} else {
-									value = null;
-								}
-								try {
-									updateColumnContent(id, feature, value);
-								} catch (SQLException e) {
-									throw new GateRuntimeException(e);
+				FeatureMap params = Factory.newFeatureMap();
+				params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content != null ? content : "");
+				params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
+				params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
+				Document document = (Document) Factory.createResource(DocumentImpl.class.getName(), params, null,
+						readDocumentName);
+				document.getFeatures().putAll(features);
+				document.getFeatures().put("gate.SourceURL", "created from JDBC");
+				if (!featureColumnList.isEmpty()) {
+					for (String featureColumn : featureColumnList) {
+						Object featureValue = values.get(featureColumn);
+						document.getFeatures().put(featureColumn, featureValue);
+					}
+					if (!readonly) {
+						document.getFeatures().addFeatureMapListener(new FeatureMapListener() {
+
+							@Override
+							public void featureMapUpdated() {
+								for (String feature : featureColumnList) {
+									FeatureMap featureMap = document.getFeatures();
+									Object value;
+									if (featureMap.containsKey(feature)) {
+										value = document.getFeatures().get(feature);
+									} else {
+										value = null;
+									}
+									try {
+										updateColumnContent(id, feature, value);
+									} catch (SQLException e) {
+										throw new GateRuntimeException(e);
+									}
 								}
 							}
-						}
-					});
+						});
+					}
 				}
+				readDocuments.put(readDocumentName, document);
 			}
-			readDocuments.put(readDocumentName, document);
+			loadedIds.add(readId);
 		}
 		Document read = null;
 
@@ -375,6 +408,13 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		}
 
 		return read;
+	}
+
+	@Override
+	protected void documentUnloaded(Document document) {
+		Map<Object, Object> features = document.getFeatures();
+		Object id = features.get(FEATURE_JDBC_ID);
+		loadedIds.remove(id);
 	}
 
 	@Override
@@ -415,6 +455,8 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		query = query.replaceAll(Pattern.quote("${tableName}"), tableName);
 		query = query.replaceAll(Pattern.quote("${idColumn}"), idColumn);
 		query = query.replaceAll(Pattern.quote("${columns}"), String.join(",", this.columns));
+		query = query.replaceAll(Pattern.quote("${otherIdMarks}"),
+				String.join("", Collections.nCopies(preloadDocuments, ", ?")));
 		return connection.prepareStatement(query);
 	}
 
@@ -438,28 +480,39 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	private boolean existId(Object id) throws SQLException {
-		selectStatement.setObject(1, id);
-		ResultSet rs = selectStatement.executeQuery();
+		existStatement.setObject(1, id);
+		ResultSet rs = existStatement.executeQuery();
 		return rs.next();
 	}
 
-	private Map<String, Object> readRow(Object id) throws SQLException {
-		selectStatement.setObject(1, id);
+	private Map<Object, Map<String, Object>> readRows(Object loadId, List<Object> preloadIds) throws SQLException {
+		selectStatement.setObject(1, loadId);
+		for (int i = 0; i < preloadDocuments; i++) {
+			if (i < preloadIds.size()) {
+				Object otherId = preloadIds.get(i);
+				selectStatement.setObject(i + 2, otherId);
+			} else {
+				selectStatement.setNull(i + 2, java.sql.Types.JAVA_OBJECT);
+			}
+		}
+
 		ResultSet rs = selectStatement.executeQuery();
-		if (!rs.next()) {
-			throw new GateRuntimeException("No row found in table: " + id);
+		Map<Object, Map<String, Object>> values = new LinkedHashMap<>();
+		while (rs.next()) {
+			Object id = rs.getObject(idColumn);
+
+			Map<String, Object> rowValues = new LinkedHashMap<>();
+			for (String column : columns) {
+				rowValues.put(column, rs.getObject(column));
+			}
+
+			values.put(id, rowValues);
 		}
 
-		Map<String, Object> rowValues = new LinkedHashMap<>();
-
-		for (String column : columns) {
-			rowValues.put(column, rs.getObject(column));
+		if (!values.keySet().contains(loadId) || !values.keySet().containsAll(preloadIds)) {
+			throw new GateRuntimeException("missing values");
 		}
-
-		if (rs.next()) {
-			throw new GateRuntimeException("More than one row found in table: " + id);
-		}
-		return rowValues;
+		return values;
 	}
 
 	private void updateColumnContent(Object id, String column, Object value) throws SQLException {
