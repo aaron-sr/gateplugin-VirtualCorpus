@@ -196,7 +196,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		@Override
 		public void resourceUnloaded(CreoleEvent e) {
 			Resource resource = e.getResource();
-			if (corpus.contains(resource)) {
+			if (resource instanceof Document) {
 				Document document = (Document) resource;
 				corpus.unloadDocument(document);
 			} else if (resource == corpus) {
@@ -297,14 +297,17 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final boolean isDocumentLoaded(int index) {
-		return documents.containsKey(documentNames.get(index));
+		return isDocumentLoaded(documentNames.get(index));
+	}
+
+	public final boolean isDocumentLoaded(String documentName) {
+		return documents.containsKey(documentName);
 	}
 
 	@Override
 	public final void unloadDocument(Document document) {
 		String documentName = document.getName();
-		int index = documentNames.indexOf(documentName);
-		if (this.documentNames.contains(documentName) && isDocumentLoaded(index)) {
+		if (isDocumentLoaded(documentName)) {
 			try {
 				if (!readonly && !unloaded) {
 					updateDocument(document);
@@ -362,7 +365,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		if (object instanceof Document) {
 			Document document = (Document) object;
 			String documentName = document.getName();
-			return documentNames.indexOf(documentName) != -1;
+			return documentNames.contains(documentName);
 		}
 		return false;
 	}
