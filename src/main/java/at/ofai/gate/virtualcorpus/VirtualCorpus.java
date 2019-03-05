@@ -63,7 +63,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		try {
 			PersistenceManager.registerPersistentEquivalent(VirtualCorpus.class, VirtualCorpusPersistence.class);
 		} catch (PersistenceException e) {
-			e.printStackTrace();
+			throw new GateRuntimeException(e);
 		}
 	}
 
@@ -77,41 +77,41 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Optional
 	@CreoleParameter(comment = "If true, document content changes will not be saved and document names cannot be renamed", defaultValue = "true")
-	public void setReadonly(Boolean readonly) {
+	public final void setReadonly(Boolean readonly) {
 		this.readonly = readonly;
 	}
 
-	public Boolean getReadonly() {
+	public final Boolean getReadonly() {
 		return this.readonly;
 	}
 
 	@Optional
 	@CreoleParameter(comment = "If true, documents cannot be added or removed to the corpus", defaultValue = "true")
-	public void setImmutable(Boolean immutable) {
+	public final void setImmutable(Boolean immutable) {
 		this.immutable = immutable;
 	}
 
-	public Boolean getImmutable() {
+	public final Boolean getImmutable() {
 		return immutable;
 	}
 
 	@Optional
 	@CreoleParameter(comment = "encoding to read and write document content", defaultValue = "utf-8")
-	public void setEncoding(String encoding) {
+	public final void setEncoding(String encoding) {
 		this.encoding = encoding;
 	}
 
-	public String getEncoding() {
+	public final String getEncoding() {
 		return encoding;
 	}
 
 	@Optional
 	@CreoleParameter(comment = "mimeType to read and write document content", defaultValue = "")
-	public void setMimeType(String mimeType) {
+	public final void setMimeType(String mimeType) {
 		this.mimeType = mimeType;
 	}
 
-	public String getMimeType() {
+	public final String getMimeType() {
 		return mimeType;
 	}
 
@@ -127,7 +127,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	protected final static boolean hasValue(String string) {
-		return string != null && string.length() > 0;
+		return string != null && string.trim().length() > 0;
 	}
 
 	protected final void checkValidMimeType() throws ResourceInstantiationException {
@@ -267,8 +267,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 				if (!corpus.readonly && !corpus.unloaded) {
 					corpus.updateDocument(document);
 				}
-			} catch (Exception e1) {
-				throw new GateRuntimeException("Exception updating the document", e1);
+			} catch (Exception ex) {
+				throw new GateRuntimeException("Exception updating the document", ex);
 			}
 		}
 
@@ -283,6 +283,14 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	protected abstract void deleteDocument(Document document) throws Exception;
 
 	protected abstract void renameDocument(Document document, String oldName, String newName) throws Exception;
+
+	protected final void documentLoaded(String documentName, Document document) {
+		if (documents.containsKey(documentName)) {
+			throw new GateRuntimeException("document already loaded: " + documentName);
+		}
+		documents.put(documentName, document);
+		document.addDocumentListener(documentListener);
+	}
 
 	@Override
 	public final boolean isDocumentLoaded(int index) {
@@ -324,8 +332,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 		try {
 			Document document = readDocument(documentName);
-			documents.put(documentName, document);
-			document.addDocumentListener(documentListener);
+			documentLoaded(documentName, document);
 			return document;
 		} catch (Exception e) {
 			throw new GateRuntimeException("Problem retrieving document data for " + documentName, e);
@@ -358,7 +365,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public boolean containsAll(Collection<?> c) {
+	public final boolean containsAll(Collection<?> c) {
 		for (Object object : c) {
 			if (!contains(object)) {
 				return false;
@@ -368,7 +375,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public List<Document> subList(int i1, int i2) {
+	public final List<Document> subList(int i1, int i2) {
 		List<Document> subList = new ArrayList<>();
 		for (int i = i1; i < i2; i++) {
 			subList.add(get(i));
@@ -377,7 +384,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public Object[] toArray() {
+	public final Object[] toArray() {
 		List<Document> documents = new ArrayList<>();
 		for (int i = 0; i < documentNames.size(); i++) {
 			Document document = get(i);
@@ -388,7 +395,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public Object[] toArray(Object[] x) {
+	public final Object[] toArray(Object[] x) {
 		List<Document> documents = new ArrayList<>();
 		for (int i = 0; i < documentNames.size(); i++) {
 			Document document = get(i);
@@ -434,7 +441,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public int lastIndexOf(Object object) {
+	public final int lastIndexOf(Object object) {
 		if (object instanceof Document) {
 			Document document = (Document) object;
 			String documentName = document.getName();
@@ -444,7 +451,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public boolean isEmpty() {
+	public final boolean isEmpty() {
 		return (documentNames.isEmpty());
 	}
 
@@ -672,12 +679,12 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	@Override
-	public ListIterator<Document> listIterator(int i) {
+	public final ListIterator<Document> listIterator(int i) {
 		return new VirtualCorpusListIterator(this, i);
 	}
 
 	@Override
-	public ListIterator<Document> listIterator() {
+	public final ListIterator<Document> listIterator() {
 		return listIterator(0);
 	}
 
