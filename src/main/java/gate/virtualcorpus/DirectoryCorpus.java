@@ -1,36 +1,16 @@
-/*
- * Copyright (c) 2010- Austrian Research Institute for Artificial Intelligence (OFAI). 
- * Copyright (C) 2014-2016 The University of Sheffield.
- *
- * This file is part of gateplugin-VirtualCorpus
- * (see https://github.com/johann-petrak/gateplugin-VirtualCorpus)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public License
- * as published by the Free Software Foundation, either
- * version 3 of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software. If not, see <http://www.gnu.org/licenses/>.
- */
-
-package at.ofai.gate.virtualcorpus;
+package gate.virtualcorpus;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.net.MalformedURLException;
+import java.io.OutputStream;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.FilenameUtils;
 import org.apache.log4j.Logger;
 
 import gate.Document;
@@ -49,17 +29,6 @@ import gate.util.Files;
 import gate.util.GateException;
 import gate.util.GateRuntimeException;
 
-/**
- * A Corpus LR that mirrors files in a directory.
- * <p>
- * NOTE: If you use the "Save as XML" option from the LR's context menu, be
- * careful not specify the directory where the corpus saves documents as the
- * target directory for the "Save as XML" function -- this might produce
- * unexpected results. Even if a different directory is specified, the "Save as
- * XML" function will still also re-save the documents in the corpus directory
- * unless the <code>saveDocuments</code> option is set to false.
- * 
- */
 @CreoleResource(name = "DirectoryCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by GATE documents in a directory or directory tree")
 public class DirectoryCorpus extends VirtualCorpus {
 	private static final long serialVersionUID = -8485161260415382902L;
@@ -111,16 +80,19 @@ public class DirectoryCorpus extends VirtualCorpus {
 		return hidden;
 	}
 
+	private List<File> files = new ArrayList<>();
+
 	@Override
 	public Resource init() throws ResourceInstantiationException {
 		checkValidMimeType();
+		checkValidExporterClassName();
 		if (!hasValue(mimeType)) {
 			for (String extension : extensions) {
 				if (!DocumentFormat.getSupportedFileSuffixes().contains(extension)) {
 					throw new ResourceInstantiationException(
 							"cannot read file extension " + extension + ", no DocumentFormat available");
 				}
-				if (!readonly) {
+				if (!readonlyDocuments) {
 					if (getExporterForExtension(extension) == null) {
 						throw new ResourceInstantiationException(
 								"cannot write file extension " + extension + ", no DocumentExporter available");
@@ -144,11 +116,9 @@ public class DirectoryCorpus extends VirtualCorpus {
 		String[] supportedExtensions = !extensions.isEmpty() ? extensions.toArray(new String[0])
 				: DocumentFormat.getSupportedFileSuffixes().toArray(new String[0]);
 
-		List<String> documentNames = new ArrayList<>();
 		Iterator<File> iterator = FileUtils.iterateFiles(directory, supportedExtensions, recursive);
 		while (iterator.hasNext()) {
 			File file = iterator.next();
-			String filename = file.getName();
 			if (hidden || !file.isHidden()) {
 				if (recursive) {
 					try {
@@ -156,12 +126,11 @@ public class DirectoryCorpus extends VirtualCorpus {
 					} catch (IOException e) {
 						throw new ResourceInstantiationException("Could not get canonical path for " + file);
 					}
-					filename = directory.toURI().relativize(file.toURI()).getPath();
 				}
-				documentNames.add(filename);
+				files.add(file);
 			}
 		}
-		initVirtualCorpus(documentNames);
+		initVirtualCorpus();
 		return this;
 	}
 
@@ -179,51 +148,56 @@ public class DirectoryCorpus extends VirtualCorpus {
 	}
 
 	@Override
-	protected Document readDocument(String documentName) throws Exception {
-		File documentFile = new File(directory, documentName);
-		URL documentURL;
-		try {
-			documentURL = documentFile.toURI().toURL();
-		} catch (MalformedURLException e) {
-			throw new GateRuntimeException("Could not create URL for document name " + documentName, e);
-		}
+	protected void renameDocument(Document document, String oldName, String newName) throws Exception {
+		throw new GateRuntimeException("renaming document is not supported");
+	}
+
+	@Override
+	protected int loadSize() throws Exception {
+		return files.size();
+	}
+
+	@Override
+	protected String loadDocumentName(int index) throws Exception {
+		return directory.toURI().relativize(files.get(index).toURI()).getPath();
+	}
+
+	@Override
+	protected Document loadDocument(int index) throws Exception {
+		File file = files.get(index);
+		String content = FileUtils.readFileToString(file);
+
+		FeatureMap features = Factory.newFeatureMap();
 		FeatureMap params = Factory.newFeatureMap();
-		params.put(Document.DOCUMENT_URL_PARAMETER_NAME, documentURL);
+		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
 		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
 		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
-		return (Document) Factory.createResource(DocumentImpl.class.getName(), params, null, documentName);
+		String documentName = getDocumentName(index);
+		return (Document) Factory.createResource(DocumentImpl.class.getName(), params, features, documentName);
 	}
 
 	@Override
-	protected void createDocument(Document document) throws Exception {
-		String documentName = document.getName();
-		File documentFile = new File(directory, documentName);
-		documentFile.createNewFile();
+	protected Integer addDocuments(int index, Collection<? extends Document> documents) throws Exception {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
-	protected void updateDocument(Document document) throws Exception {
-		String documentName = document.getName();
-		DocumentExporter exporter = mimeType != null && mimeType.length() > 0 ? getExporter(mimeType)
-				: getExporterForExtension(FilenameUtils.getExtension(documentName));
+	protected void setDocument(int index, Document document) throws Exception {
+		File file = files.get(index);
 
-		File documentFile = new File(directory, documentName);
-		exporter.export(document, documentFile);
-
+		try (OutputStream outputStream = new FileOutputStream(file)) {
+			export(getExporter(mimeType), document, outputStream);
+		}
 	}
 
 	@Override
-	protected void deleteDocument(Document document) throws Exception {
-		String documentName = document.getName();
-		File documentFile = new File(directory, documentName);
-		documentFile.delete();
+	protected Integer deleteDocuments(Collection<? extends Document> documents) throws Exception {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
-	protected void renameDocument(Document document, String oldName, String newName) throws Exception {
-		File oldFile = new File(directory, oldName);
-		File newFile = new File(directory, newName);
-		oldFile.renameTo(newFile);
+	protected void deleteAllDocuments() throws Exception {
+		throw new UnsupportedOperationException();
 	}
 
 }
