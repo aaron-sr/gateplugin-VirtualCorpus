@@ -195,7 +195,7 @@ public class JDBCCorpus extends VirtualCorpus implements Corpus {
 		checkValidMimeType();
 		checkValidExporterClassName();
 		if (!immutableCorpus) {
-			throw new ResourceInstantiationException("unimmutable jdbc corpus currently not supported");
+			throw new ResourceInstantiationException("mutable jdbc corpus currently not supported");
 		}
 		if (!hasValue(tableName)) {
 			throw new ResourceInstantiationException("tableName must not be empty");

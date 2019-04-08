@@ -86,6 +86,9 @@ public class DirectoryCorpus extends VirtualCorpus {
 	public Resource init() throws ResourceInstantiationException {
 		checkValidMimeType();
 		checkValidExporterClassName();
+		if (!immutableCorpus) {
+			throw new ResourceInstantiationException("mutable directory corpus currently not supported");
+		}
 		if (!hasValue(mimeType)) {
 			for (String extension : extensions) {
 				if (!DocumentFormat.getSupportedFileSuffixes().contains(extension)) {
