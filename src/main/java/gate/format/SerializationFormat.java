@@ -39,7 +39,7 @@ public class SerializationFormat extends DocumentFormat {
 				try (ObjectInputStream objectInputStream = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
 					Document readDocument = (Document) objectInputStream.readObject();
 					validateEmptyDocument(document);
-					applyDocumentValues(readDocument, document);
+					copyDocumentValues(readDocument, document);
 				}
 			}
 		} catch (Exception e) {
@@ -94,7 +94,7 @@ public class SerializationFormat extends DocumentFormat {
 		return this;
 	}
 
-	public static final void applyDocumentValues(Document fromDocument, Document toDocument) {
+	public static final void copyDocumentValues(Document fromDocument, Document toDocument) {
 		toDocument.setContent(new DocumentContentImpl(fromDocument.getContent().toString()));
 		if (!fromDocument.getAnnotations().isEmpty()) {
 			for (Annotation annotation : fromDocument.getAnnotations()) {
