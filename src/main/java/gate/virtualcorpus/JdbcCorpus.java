@@ -44,10 +44,10 @@ import gate.util.GateRuntimeException;
  * documents is supported!
  */
 
-@CreoleResource(name = "JDBCCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by GATE documents stored in a JDBC table")
-public class JDBCCorpus extends VirtualCorpus implements Corpus {
+@CreoleResource(name = "JdbcCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by GATE documents stored in a JDBC table")
+public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	private static final long serialVersionUID = -8485133333415382902L;
-	private static Logger logger = Logger.getLogger(JDBCCorpus.class);
+	private static Logger logger = Logger.getLogger(JdbcCorpus.class);
 
 	public static final String FEATURE_JDBC_ID = "jdbcId";
 	public static final String FEATURE_JDBC_CONTENT_COLUMN = "jdbcContentColumn";
