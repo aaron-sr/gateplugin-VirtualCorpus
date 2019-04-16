@@ -49,9 +49,6 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	private static final long serialVersionUID = -8485133333415382902L;
 	private static Logger logger = Logger.getLogger(JdbcCorpus.class);
 
-	public static final String FEATURE_JDBC_ID = "jdbcId";
-	public static final String FEATURE_JDBC_CONTENT_COLUMN = "jdbcContentColumn";
-
 	private static final String COUNT_ID_SQL = "SELECT COUNT(${idColumn}) FROM ${tableName}";
 	private static final String SELECT_ID_SQL = "SELECT ${idColumn} FROM ${tableName} ORDER BY ${idColumn} ASC";
 	private static final String SELECT_VALUES_SQL = "SELECT ${idColumn}, ${columns} FROM ${tableName} ORDER BY ${idColumn} ASC";
@@ -243,12 +240,6 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		List<String> featureColumns = splitUserInput(this.featureColumns);
 		if (featureColumns.contains(idColumn)) {
 			throw new ResourceInstantiationException("featureColumns cannot contain " + idColumn);
-		}
-		if (featureColumns.contains(FEATURE_JDBC_ID)) {
-			throw new ResourceInstantiationException("featureColumns cannot contain " + FEATURE_JDBC_ID);
-		}
-		if (featureColumns.contains(FEATURE_JDBC_CONTENT_COLUMN)) {
-			throw new ResourceInstantiationException("featureColumns cannot contain " + FEATURE_JDBC_CONTENT_COLUMN);
 		}
 		if (contentColumns.contains(ALL_COLUMNS)) {
 			List<String> columns = new ArrayList<String>(allTableColumns);
