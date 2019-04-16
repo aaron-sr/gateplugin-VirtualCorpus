@@ -356,7 +356,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		if (selectValuesResults.isClosed()) {
 			selectValuesResults = selectValuesStatement.executeQuery();
 		}
-		int currentRow = selectIdResults.getRow();
+		int currentRow = selectValuesResults.getRow();
 		if (currentRow != row) {
 			if (currentRow > row && selectValuesStatement.getResultSetType() == ResultSet.TYPE_FORWARD_ONLY) {
 				selectValuesResults.close();
@@ -366,6 +366,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		}
 
 		Object id = selectValuesResults.getObject(idColumn);
+		loadedIds.put(index, id);
 		Object content = selectValuesResults.getObject(contentColumn);
 		if (content == null) {
 			content = "";
