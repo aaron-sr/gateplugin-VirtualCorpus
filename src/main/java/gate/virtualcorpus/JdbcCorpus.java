@@ -67,12 +67,14 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected Integer fetchIds;
 	protected Integer fetchRows;
 	protected String exportColumnSuffix;
+	protected String exportEncoding;
 
 	private Connection connection;
 	private Collection<String> allTableColumns;
 	private List<String> columns;
 	private List<String> contentColumnList;
 	private List<String> featureColumnList;
+	private Map<String, String> exportColumnMapping;
 
 	private PreparedStatement countIdStatement;
 	private PreparedStatement selectIdStatement;
@@ -187,6 +189,16 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return exportColumnSuffix;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "encoding for value columns, which were exported (in case of reopen document)", defaultValue = "")
+	public void setExportEncoding(String exportEncoding) {
+		this.exportEncoding = exportEncoding;
+	}
+
+	public String getExportEncoding() {
+		return exportEncoding;
+	}
+
 	@Override
 	public Resource init() throws ResourceInstantiationException {
 		checkValidMimeType();
@@ -201,7 +213,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			throw new ResourceInstantiationException("idColumn must not be empty");
 		}
 		if (!hasValue(contentColumns)) {
-			throw new ResourceInstantiationException("valueColumn must not be empty");
+			throw new ResourceInstantiationException("contentColumns must not be empty");
 		}
 
 		try {
@@ -241,6 +253,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		if (featureColumns.contains(idColumn)) {
 			throw new ResourceInstantiationException("featureColumns cannot contain " + idColumn);
 		}
+		Map<String, String> exportColumnMapping = new HashMap<>();
 		if (contentColumns.contains(ALL_COLUMNS)) {
 			List<String> columns = new ArrayList<String>(allTableColumns);
 			columns.remove(idColumn);
@@ -249,14 +262,22 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 				Iterator<String> iterator = columns.iterator();
 				while (iterator.hasNext()) {
 					String column = iterator.next();
-					if (column.endsWith(exportColumnSuffix)
-							&& columns.contains(column.substring(0, column.length() - exportColumnSuffix.length()))) {
+					String columnWithoutSuffix = column.substring(0, column.length() - exportColumnSuffix.length());
+					if (column.endsWith(exportColumnSuffix) && columns.contains(columnWithoutSuffix)) {
+						exportColumnMapping.put(columnWithoutSuffix, column);
 						iterator.remove();
 					}
 				}
 			}
 			contentColumns.clear();
 			contentColumns.addAll(columns);
+		} else {
+			if (hasValue(exportColumnSuffix)) {
+				for (String contentColumn : contentColumns) {
+					String exportColum = contentColumn + exportColumnSuffix;
+					exportColumnMapping.put(contentColumn, exportColum);
+				}
+			}
 		}
 		if (!allTableColumns.containsAll(contentColumns)) {
 			contentColumns.removeAll(allTableColumns);
@@ -266,11 +287,18 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			featureColumns.removeAll(allTableColumns);
 			throw new ResourceInstantiationException("feature columns does not exist: " + featureColumns);
 		}
+		if (hasValue(exportColumnSuffix) && !allTableColumns.containsAll(exportColumnMapping.values())) {
+			List<String> exportColumns = new ArrayList<String>(exportColumnMapping.values());
+			exportColumns.removeAll(allTableColumns);
+			throw new ResourceInstantiationException("export columns does not exist: " + exportColumns);
+		}
 		this.contentColumnList = contentColumns;
 		this.featureColumnList = featureColumns;
+		this.exportColumnMapping = exportColumnMapping;
 		this.columns = new ArrayList<>();
 		this.columns.addAll(contentColumns);
 		this.columns.addAll(featureColumns);
+		this.columns.addAll(exportColumnMapping.values());
 
 		try {
 			countIdStatement = connection.prepareStatement(prepareQuery(COUNT_ID_SQL));
@@ -367,7 +395,20 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 		Object id = selectValuesResults.getObject(idColumn);
 		loadedIds.put(index, id);
-		Object content = selectValuesResults.getObject(contentColumn);
+		Object content = null;
+		String encoding = this.encoding;
+		String mimeType = this.mimeType;
+		if (hasValue(exportColumnSuffix)) {
+			String exportColumn = exportColumnMapping.get(contentColumn);
+			content = selectValuesResults.getObject(exportColumn);
+			if (content != null) {
+				encoding = exportEncoding;
+				mimeType = getExporter().getMimeType();
+			}
+		}
+		if (content == null) {
+			content = selectValuesResults.getObject(contentColumn);
+		}
 		if (content == null) {
 			content = "";
 		} else if (content instanceof byte[]) {
@@ -401,7 +442,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		Object id = getId(row);
 
 		if (hasValue(exportColumnSuffix)) {
-			column = column + exportColumnSuffix;
+			column = exportColumnMapping.get(column);
 		}
 
 		updateColumnContent(id, column, export(getExporter(), document));
@@ -507,11 +548,6 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	private void updateColumnContent(Object id, String column, Object value) throws SQLException {
 		PreparedStatement updateStatement = updateStatements.get(column);
 		setValue(updateStatement, 1, value);
-		if (value instanceof byte[]) {
-			updateStatement.setBytes(1, (byte[]) value);
-		} else {
-			updateStatement.setObject(1, value);
-		}
 		updateStatement.setObject(2, id);
 		updateStatement.executeUpdate();
 
