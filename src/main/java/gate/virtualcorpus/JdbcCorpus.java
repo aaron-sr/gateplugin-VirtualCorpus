@@ -2,10 +2,10 @@ package gate.virtualcorpus;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.JDBCType;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -76,11 +76,10 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	private List<String> featureColumnList;
 	private Map<String, String> exportColumnMapping;
 
-	private PreparedStatement countIdStatement;
-	private PreparedStatement selectIdStatement;
-	private ResultSet selectIdResults;
-	private PreparedStatement selectValuesStatement;
-	private ResultSet selectValuesResults;
+	private PreparedStatement idStatement;
+	private ResultSet idResultSet;
+	private PreparedStatement valuesStatement;
+	private ResultSet valuesResultSet;
 	private Map<String, PreparedStatement> updateStatements;
 
 	private Map<Integer, Object> loadedIds = new HashMap<>();
@@ -287,7 +286,8 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			featureColumns.removeAll(allTableColumns);
 			throw new ResourceInstantiationException("feature columns does not exist: " + featureColumns);
 		}
-		if (hasValue(exportColumnSuffix) && !allTableColumns.containsAll(exportColumnMapping.values())) {
+		if (!readonlyDocuments && hasValue(exportColumnSuffix)
+				&& !allTableColumns.containsAll(exportColumnMapping.values())) {
 			List<String> exportColumns = new ArrayList<String>(exportColumnMapping.values());
 			exportColumns.removeAll(allTableColumns);
 			throw new ResourceInstantiationException("export columns does not exist: " + exportColumns);
@@ -301,32 +301,24 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		this.columns.addAll(exportColumnMapping.values());
 
 		try {
-			countIdStatement = connection.prepareStatement(prepareQuery(COUNT_ID_SQL));
-
 			if (connection.getMetaData().supportsResultSetConcurrency(ResultSet.TYPE_SCROLL_INSENSITIVE,
-					ResultSet.CONCUR_READ_ONLY)) {
-				selectIdStatement = connection.prepareStatement(prepareQuery(SELECT_ID_SQL),
+					ResultSet.CONCUR_UPDATABLE)) {
+				idStatement = connection.prepareStatement(prepareQuery(SELECT_ID_SQL),
 						ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
-				selectValuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL),
+				valuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL),
+						ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE);
+			} else if (connection.getMetaData().supportsResultSetConcurrency(ResultSet.TYPE_SCROLL_INSENSITIVE,
+					ResultSet.CONCUR_READ_ONLY)) {
+				idStatement = connection.prepareStatement(prepareQuery(SELECT_ID_SQL),
+						ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+				valuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL),
 						ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
 			} else {
-				selectValuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL));
-				selectIdStatement = connection.prepareStatement(prepareQuery(SELECT_ID_SQL));
+				valuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL));
+				idStatement = connection.prepareStatement(prepareQuery(SELECT_ID_SQL));
 			}
-			selectIdStatement.setFetchSize(fetchIds);
-			selectValuesStatement.setFetchSize(fetchRows);
-			selectIdResults = selectIdStatement.executeQuery();
-			selectValuesResults = selectValuesStatement.executeQuery();
-
-			if (!readonlyDocuments) {
+			if (!readonlyDocuments && valuesStatement.getResultSetConcurrency() != ResultSet.CONCUR_UPDATABLE) {
 				if (hasValue(exportColumnSuffix)) {
-					for (String contentColumn : contentColumns) {
-						String exportColumn = contentColumn + exportColumnSuffix;
-						if (!allTableColumns.contains(exportColumn)) {
-							throw new ResourceInstantiationException(
-									"export content columns does not exist: " + exportColumn);
-						}
-					}
 					updateStatements = prepareStatements(UPDATE_VALUES_SQL, contentColumns, exportColumnSuffix);
 				} else {
 					updateStatements = prepareStatements(UPDATE_VALUES_SQL, contentColumns);
@@ -335,6 +327,11 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 					updateStatements.putAll(prepareStatements(UPDATE_VALUES_SQL, featureColumns));
 				}
 			}
+
+			idStatement.setFetchSize(fetchIds);
+			valuesStatement.setFetchSize(fetchRows);
+			idResultSet = idStatement.executeQuery();
+			valuesResultSet = valuesStatement.executeQuery();
 		} catch (SQLException e) {
 			throw new ResourceInstantiationException("Could not prepare statement", e);
 		}
@@ -347,6 +344,9 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	@Override
 	public void cleanup() {
 		try {
+			if (!readonlyDocuments && valuesResultSet.getConcurrency() == ResultSet.CONCUR_UPDATABLE) {
+				valuesResultSet.updateRow();
+			}
 			if (connection != null && !connection.isClosed()) {
 				connection.close();
 			}
@@ -358,7 +358,8 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 	@Override
 	protected int loadSize() throws Exception {
-		try (ResultSet resultSet = countIdStatement.executeQuery()) {
+		try (Statement statement = connection.createStatement()) {
+			ResultSet resultSet = statement.executeQuery(prepareQuery(COUNT_ID_SQL));
 			resultSet.next();
 			int rowCount = resultSet.getInt(1);
 			int columnCount = contentColumnList.size();
@@ -381,33 +382,23 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		Integer row = row(index);
 		String contentColumn = column(index);
 
-		if (selectValuesResults.isClosed()) {
-			selectValuesResults = selectValuesStatement.executeQuery();
-		}
-		int currentRow = selectValuesResults.getRow();
-		if (currentRow != row) {
-			if (currentRow > row && selectValuesStatement.getResultSetType() == ResultSet.TYPE_FORWARD_ONLY) {
-				selectValuesResults.close();
-				selectValuesResults = selectValuesStatement.executeQuery();
-			}
-			selectValuesResults.absolute(row);
-		}
+		valuesResultSet = moveResultSetToRow(valuesStatement, valuesResultSet, row);
 
-		Object id = selectValuesResults.getObject(idColumn);
+		Object id = valuesResultSet.getObject(idColumn);
 		loadedIds.put(index, id);
 		Object content = null;
-		String encoding = this.encoding;
-		String mimeType = this.mimeType;
+		String encoding = null;
+		String mimeType = null;
 		if (hasValue(exportColumnSuffix)) {
 			String exportColumn = exportColumnMapping.get(contentColumn);
-			content = selectValuesResults.getObject(exportColumn);
-			if (content != null) {
-				encoding = exportEncoding;
-				mimeType = getExporter().getMimeType();
-			}
+			content = valuesResultSet.getObject(exportColumn);
+			encoding = exportEncoding;
+			mimeType = getExporter().getMimeType();
 		}
 		if (content == null) {
-			content = selectValuesResults.getObject(contentColumn);
+			content = valuesResultSet.getObject(contentColumn);
+			encoding = this.encoding;
+			mimeType = this.mimeType;
 		}
 		if (content == null) {
 			content = "";
@@ -418,7 +409,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		}
 		FeatureMap features = Factory.newFeatureMap();
 		for (String featureColumn : featureColumnList) {
-			Object feature = selectValuesResults.getObject(featureColumn);
+			Object feature = valuesResultSet.getObject(featureColumn);
 			features.put(featureColumn, feature);
 		}
 		FeatureMap params = Factory.newFeatureMap();
@@ -439,13 +430,33 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		Integer row = row(index);
 		String column = column(index);
 
-		Object id = getId(row);
-
 		if (hasValue(exportColumnSuffix)) {
 			column = exportColumnMapping.get(column);
 		}
 
-		updateColumnContent(id, column, export(getExporter(), document));
+		byte[] bytes = export(getExporter(), document);
+
+		if (valuesStatement.getResultSetConcurrency() == ResultSet.CONCUR_UPDATABLE) {
+			valuesResultSet = moveResultSetToRow(valuesStatement, valuesResultSet, row);
+			valuesResultSet.updateBytes(column, bytes);
+			if (!connection.getMetaData().ownUpdatesAreVisible(valuesResultSet.getType())) {
+				valuesResultSet.updateRow();
+				valuesResultSet.close();
+			}
+		} else {
+			Object id = getId(row);
+			PreparedStatement updateStatement = updateStatements.get(column);
+			updateStatement.setBytes(1, bytes);
+			updateStatement.setObject(2, id);
+			updateStatement.executeUpdate();
+
+			if (!connection.getMetaData().othersUpdatesAreVisible(idStatement.getResultSetType())) {
+				idResultSet.close();
+			}
+			if (!connection.getMetaData().othersUpdatesAreVisible(valuesStatement.getResultSetType())) {
+				valuesResultSet.close();
+			}
+		}
 	}
 
 	@Override
@@ -475,20 +486,9 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			return id;
 		}
 
-		if (selectIdResults.isClosed()) {
-			selectIdResults = selectIdStatement.executeQuery();
-		}
-		int currentRow = selectIdResults.getRow();
-		if (currentRow != row) {
-			if (currentRow > row && selectIdStatement.getResultSetType() == ResultSet.TYPE_FORWARD_ONLY) {
-				selectIdResults.close();
-				selectIdResults = selectIdStatement.executeQuery();
-			}
+		idResultSet = moveResultSetToRow(idStatement, idResultSet, row);
 
-			selectIdResults.absolute(row);
-		}
-
-		id = selectIdResults.getObject(1);
+		id = idResultSet.getObject(1);
 		loadedIds.put(row, id);
 		return id;
 	}
@@ -545,38 +545,27 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		}
 	}
 
-	private void updateColumnContent(Object id, String column, Object value) throws SQLException {
-		PreparedStatement updateStatement = updateStatements.get(column);
-		setValue(updateStatement, 1, value);
-		updateStatement.setObject(2, id);
-		updateStatement.executeUpdate();
+	private ResultSet moveResultSetToRow(PreparedStatement statement, ResultSet resultSet, Integer row)
+			throws SQLException {
+		boolean reopened = false;
+		if (resultSet.isClosed()) {
+			resultSet = statement.executeQuery();
+			reopened = true;
+		}
+		int currentRow = resultSet.getRow();
+		if (currentRow != row) {
+			if (currentRow > row && statement.getResultSetType() == ResultSet.TYPE_FORWARD_ONLY) {
+				resultSet.close();
+				resultSet = statement.executeQuery();
+				reopened = true;
+			}
+			if (!reopened && resultSet.getConcurrency() == ResultSet.CONCUR_UPDATABLE) {
+				resultSet.updateRow();
+			}
 
-		if (!connection.getMetaData().othersUpdatesAreVisible(selectIdStatement.getResultSetType())) {
-			selectIdResults.close();
+			resultSet.absolute(row);
 		}
-		if (!connection.getMetaData().othersUpdatesAreVisible(selectValuesStatement.getResultSetType())) {
-			selectValuesResults.close();
-		}
-	}
-
-	private void setValue(PreparedStatement statement, int index, Object value) throws SQLException {
-		if (value == null) {
-			statement.setNull(index, JDBCType.NULL.getVendorTypeNumber());
-		} else if (value instanceof Integer) {
-			statement.setInt(index, (Integer) value);
-		} else if (value instanceof Long) {
-			statement.setLong(index, (Long) value);
-		} else if (value instanceof Float) {
-			statement.setFloat(index, (Float) value);
-		} else if (value instanceof Double) {
-			statement.setDouble(index, (Double) value);
-		} else if (value instanceof String) {
-			statement.setString(index, (String) value);
-		} else if (value instanceof byte[]) {
-			statement.setBytes(index, (byte[]) value);
-		} else {
-			statement.setObject(index, value);
-		}
+		return resultSet;
 	}
 
 }
