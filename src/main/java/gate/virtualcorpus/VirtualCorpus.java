@@ -508,6 +508,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			int index = this.indexOf(document);
 			loadedDocuments.remove(index);
 			document.removeDocumentListener(documentListener);
+			documentAnnotationSets.remove(document);
 			for (AnnotationSet annotationSet : document.getNamedAnnotationSets().values()) {
 				annotationSet.removeAnnotationSetListener(annotationSetListener);
 			}
