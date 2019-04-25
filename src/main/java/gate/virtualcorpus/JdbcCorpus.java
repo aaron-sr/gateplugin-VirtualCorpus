@@ -64,13 +64,13 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected String idColumn;
 	protected String contentColumns;
 	protected String featureColumns;
+	protected String exportColumnSuffix;
+	protected String exportEncoding;
 	protected Integer resultSetType;
 	protected Integer resultSetConcurrency;
 	protected Integer fetchDirection;
 	protected Integer fetchIds;
 	protected Integer fetchRows;
-	protected String exportColumnSuffix;
-	protected String exportEncoding;
 
 	private Connection connection;
 	private Collection<String> allTableColumns;
@@ -161,6 +161,26 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return featureColumns;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "suffix for value columns, where exported data is written (non-existent columns will be created)", defaultValue = "")
+	public void setExportColumnSuffix(String exportColumnSuffix) {
+		this.exportColumnSuffix = exportColumnSuffix;
+	}
+
+	public String getExportColumnSuffix() {
+		return exportColumnSuffix;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "encoding for value columns, which were exported (in case of reopen document)", defaultValue = "")
+	public void setExportEncoding(String exportEncoding) {
+		this.exportEncoding = exportEncoding;
+	}
+
+	public String getExportEncoding() {
+		return exportEncoding;
+	}
+
 	@CreoleParameter(comment = "The type for the result sets (see java.sql.ResultSet TYPE_FORWARD_ONLY,TYPE_SCROLL_SENSITIVE,TYPE_SCROLL_INSENSITIVE)", defaultValue = ""
 			+ ResultSet.TYPE_FORWARD_ONLY)
 	public void setResultSetType(Integer resultSetType) {
@@ -210,26 +230,6 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 	public Integer getFetchRows() {
 		return fetchRows;
-	}
-
-	@Optional
-	@CreoleParameter(comment = "suffix for value columns, where exported data is written (non-existent columns will be created)", defaultValue = "")
-	public void setExportColumnSuffix(String exportColumnSuffix) {
-		this.exportColumnSuffix = exportColumnSuffix;
-	}
-
-	public String getExportColumnSuffix() {
-		return exportColumnSuffix;
-	}
-
-	@Optional
-	@CreoleParameter(comment = "encoding for value columns, which were exported (in case of reopen document)", defaultValue = "")
-	public void setExportEncoding(String exportEncoding) {
-		this.exportEncoding = exportEncoding;
-	}
-
-	public String getExportEncoding() {
-		return exportEncoding;
 	}
 
 	@Override
