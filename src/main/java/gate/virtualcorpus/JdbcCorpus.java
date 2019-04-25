@@ -436,7 +436,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 		byte[] bytes = export(getExporter(), document);
 
-		if (valuesStatement.getResultSetConcurrency() == ResultSet.CONCUR_UPDATABLE) {
+		if (valuesResultSet.getConcurrency() == ResultSet.CONCUR_UPDATABLE) {
 			valuesResultSet = moveResultSetToRow(valuesStatement, valuesResultSet, row);
 			valuesResultSet.updateBytes(column, bytes);
 			if (!connection.getMetaData().ownUpdatesAreVisible(valuesResultSet.getType())) {
@@ -554,15 +554,14 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		}
 		int currentRow = resultSet.getRow();
 		if (currentRow != row) {
-			if (currentRow > row && statement.getResultSetType() == ResultSet.TYPE_FORWARD_ONLY) {
+			if (!reopened && resultSet.getConcurrency() == ResultSet.CONCUR_UPDATABLE) {
+				resultSet.updateRow();
+			}
+			if (currentRow > row && resultSet.getType() == ResultSet.TYPE_FORWARD_ONLY) {
 				resultSet.close();
 				resultSet = statement.executeQuery();
 				reopened = true;
 			}
-			if (!reopened && resultSet.getConcurrency() == ResultSet.CONCUR_UPDATABLE) {
-				resultSet.updateRow();
-			}
-
 			resultSet.absolute(row);
 		}
 		return resultSet;
