@@ -66,6 +66,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected String featureColumns;
 	protected Integer resultSetType;
 	protected Integer resultSetConcurrency;
+	protected Integer fetchDirection;
 	protected Integer fetchIds;
 	protected Integer fetchRows;
 	protected String exportColumnSuffix;
@@ -160,7 +161,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return featureColumns;
 	}
 
-	@CreoleParameter(comment = "The type for the result set (see java.sql.ResultSet TYPE_FORWARD_ONLY,TYPE_SCROLL_SENSITIVE,TYPE_SCROLL_INSENSITIVE)", defaultValue = ""
+	@CreoleParameter(comment = "The type for the result sets (see java.sql.ResultSet TYPE_FORWARD_ONLY,TYPE_SCROLL_SENSITIVE,TYPE_SCROLL_INSENSITIVE)", defaultValue = ""
 			+ ResultSet.TYPE_FORWARD_ONLY)
 	public void setResultSetType(Integer resultSetType) {
 		this.resultSetType = resultSetType;
@@ -170,7 +171,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return resultSetType;
 	}
 
-	@CreoleParameter(comment = "The concurrency for the result set (see java.sql.ResultSet CONCUR_READ_ONLY,CONCUR_UPDATABLE)", defaultValue = ""
+	@CreoleParameter(comment = "The concurrency for the result sets (see java.sql.ResultSet CONCUR_READ_ONLY,CONCUR_UPDATABLE)", defaultValue = ""
 			+ ResultSet.CONCUR_READ_ONLY)
 	public void setResultSetConcurrency(Integer resultSetConcurrency) {
 		this.resultSetConcurrency = resultSetConcurrency;
@@ -181,7 +182,18 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Optional
-	@CreoleParameter(comment = "fetch n rows for document ids (i.e. JDBC fetch size)", defaultValue = "0")
+	@CreoleParameter(comment = "The fetch direction for the result sets (see java.sql.ResultSet FETCH_FORWARD,FETCH_REVERSE,FETCH_UNKNOWN)", defaultValue = ""
+			+ ResultSet.FETCH_FORWARD)
+	public void setFetchDirection(Integer fetchDirection) {
+		this.fetchDirection = fetchDirection;
+	}
+
+	public Integer getFetchDirection() {
+		return fetchDirection;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "The fetch size for the id result set", defaultValue = "0")
 	public void setFetchIds(Integer fetchIds) {
 		this.fetchIds = fetchIds;
 	}
@@ -191,7 +203,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Optional
-	@CreoleParameter(comment = "fetch n rows for documents (i.e. JDBC fetch size)", defaultValue = "0")
+	@CreoleParameter(comment = "The fetch size for the documents result set", defaultValue = "0")
 	public void setFetchRows(Integer fetchRows) {
 		this.fetchRows = fetchRows;
 	}
@@ -344,8 +356,9 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 					updateStatements.putAll(prepareStatements(UPDATE_VALUES_SQL, featureColumns));
 				}
 			}
-
+			idStatement.setFetchDirection(fetchDirection);
 			idStatement.setFetchSize(fetchIds);
+			valuesStatement.setFetchDirection(fetchDirection);
 			valuesStatement.setFetchSize(fetchRows);
 			idResultSet = idStatement.executeQuery();
 			valuesResultSet = valuesStatement.executeQuery();
