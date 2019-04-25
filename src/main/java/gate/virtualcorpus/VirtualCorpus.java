@@ -25,17 +25,21 @@ import java.util.stream.Collectors;
 
 import org.apache.log4j.Logger;
 
+import gate.Annotation;
 import gate.AnnotationSet;
 import gate.Corpus;
 import gate.Document;
 import gate.DocumentExporter;
 import gate.DocumentFormat;
+import gate.FeatureMap;
 import gate.Gate;
 import gate.Resource;
 import gate.creole.AbstractLanguageResource;
 import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.Optional;
+import gate.event.AnnotationEvent;
+import gate.event.AnnotationListener;
 import gate.event.AnnotationSetEvent;
 import gate.event.AnnotationSetListener;
 import gate.event.CorpusEvent;
@@ -45,7 +49,11 @@ import gate.event.CreoleListener;
 import gate.event.DocumentEvent;
 import gate.event.DocumentListener;
 import gate.event.FeatureMapListener;
+import gate.event.RelationSetEvent;
+import gate.event.RelationSetListener;
 import gate.persist.PersistenceException;
+import gate.relations.Relation;
+import gate.relations.RelationSet;
 import gate.util.GateException;
 import gate.util.GateRuntimeException;
 import gate.util.persistence.PersistenceManager;
@@ -130,10 +138,6 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	private VirtualCorpusCreoleListener creoleListener;
-	private DocumentListener documentListener = new VirtualCorpusDocumentListener(this);
-	private Map<Document, Map<String, AnnotationSet>> documentAnnotationSets = new HashMap<>();
-	private AnnotationSetListener annotationSetListener = new VirtualCorpusAnnotationSetListener(this);
-	private Map<Document, FeatureMapListener> documentFeatureMapListeners = new HashMap<>();
 	private boolean unloaded = false;
 
 	private Integer size;
@@ -141,7 +145,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	private SortedMap<Integer, Document> loadedDocuments = new TreeMap<>();
 	private SortedMap<Integer, String> loadedDocumentNames = new TreeMap<>();
 	private Set<Integer> lruDocumentNameIndexes = new LinkedHashSet<>();
-	private Set<Document> changedDocuments = new HashSet<>();
+	private Map<Document, DocumentChangeObserver> documentChangeObservers = new HashMap<>();
 
 	protected final void initVirtualCorpus() {
 		creoleListener = new VirtualCorpusCreoleListener(this);
@@ -304,85 +308,159 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 	}
 
-	private static class VirtualCorpusDocumentListener implements DocumentListener {
+	private static class DocumentChangeObserver implements DocumentListener, AnnotationSetListener, AnnotationListener,
+			RelationSetListener, FeatureMapListener {
 
-		private VirtualCorpus corpus;
-
-		public VirtualCorpusDocumentListener(VirtualCorpus corpus) {
-			this.corpus = corpus;
-		}
-
-		@Override
-		public void annotationSetAdded(DocumentEvent e) {
-			Document document = (Document) e.getSource();
-			corpus.documentChanged(document);
-
-			String annotationSetName = e.getAnnotationSetName();
-			AnnotationSet annotationSet = document.getAnnotations(annotationSetName);
-			annotationSet.addAnnotationSetListener(corpus.annotationSetListener);
-			corpus.documentAnnotationSets.get(document).put(annotationSetName, annotationSet);
-		}
-
-		@Override
-		public void annotationSetRemoved(DocumentEvent e) {
-			Document document = (Document) e.getSource();
-			corpus.documentChanged(document);
-
-			String annotationSetName = e.getAnnotationSetName();
-			AnnotationSet annotationSet = corpus.documentAnnotationSets.get(document).remove(annotationSetName);
-			annotationSet.removeAnnotationSetListener(corpus.annotationSetListener);
-		}
-
-		@Override
-		public void contentEdited(DocumentEvent e) {
-			Document document = (Document) e.getSource();
-			corpus.documentChanged(document);
-		}
-	}
-
-	private static class VirtualCorpusAnnotationSetListener implements AnnotationSetListener {
-
-		private VirtualCorpus corpus;
-
-		public VirtualCorpusAnnotationSetListener(VirtualCorpus corpus) {
-			this.corpus = corpus;
-		}
-
-		@Override
-		public void annotationAdded(AnnotationSetEvent e) {
-			Document document = e.getSourceDocument();
-			corpus.documentChanged(document);
-		}
-
-		@Override
-		public void annotationRemoved(AnnotationSetEvent e) {
-			Document document = e.getSourceDocument();
-			corpus.documentChanged(document);
-		}
-	}
-
-	private static class VirtualCorpusFeatureMapListener implements FeatureMapListener {
-
-		private VirtualCorpus corpus;
 		private Document document;
+		private boolean changed = false;
 
-		public VirtualCorpusFeatureMapListener(VirtualCorpus corpus, Document document) {
-			this.corpus = corpus;
+		private Map<String, AnnotationSet> annotationSets = new HashMap<>();
+
+		public DocumentChangeObserver(Document document) {
 			this.document = document;
+
+			registerDocument();
+		}
+
+		private void registerDocument() {
+			document.addDocumentListener(this);
+			registerFeatureMap(document.getFeatures());
+
+			registerAnnotationSet(document.getAnnotations());
+			for (AnnotationSet annotationSet : document.getNamedAnnotationSets().values()) {
+				registerAnnotationSet(annotationSet);
+			}
+		}
+
+		private void unregisterDocument() {
+			document.removeDocumentListener(this);
+			unregisterFeatureMap(document.getFeatures());
+
+			unregisterAnnotationSet(document.getAnnotations());
+			for (AnnotationSet annotationSet : document.getNamedAnnotationSets().values()) {
+				unregisterAnnotationSet(annotationSet);
+			}
+		}
+
+		private void registerAnnotationSet(AnnotationSet annotationSet) {
+			annotationSet.addAnnotationSetListener(this);
+			if (annotationSet.getName() != null && annotationSet.getName().length() > 0) {
+				annotationSets.put(annotationSet.getName(), annotationSet);
+			}
+			for (Annotation annotation : annotationSet) {
+				registerAnnotation(annotation);
+			}
+			registerRelationSet(annotationSet.getRelations());
+		}
+
+		private void unregisterAnnotationSet(AnnotationSet annotationSet) {
+			annotationSet.removeAnnotationSetListener(this);
+			if (annotationSet.getName() != null && annotationSet.getName().length() > 0) {
+				annotationSets.remove(annotationSet.getName());
+			}
+			for (Annotation annotation : annotationSet) {
+				unregisterAnnotation(annotation);
+			}
+			unregisterRelationSet(annotationSet.getRelations());
+		}
+
+		private void registerAnnotation(Annotation annotation) {
+			annotation.addAnnotationListener(this);
+			registerFeatureMap(annotation.getFeatures());
+		}
+
+		private void unregisterAnnotation(Annotation annotation) {
+			annotation.removeAnnotationListener(this);
+			unregisterFeatureMap(annotation.getFeatures());
+		}
+
+		private void registerRelationSet(RelationSet relationSet) {
+			relationSet.addRelationSetListener(this);
+			for (Relation relation : relationSet) {
+				registerRelation(relation);
+			}
+		}
+
+		private void unregisterRelationSet(RelationSet relationSet) {
+			relationSet.removeRelationSetListener(this);
+			for (Relation relation : relationSet) {
+				unregisterRelation(relation);
+			}
+		}
+
+		private void registerRelation(Relation relation) {
+			registerFeatureMap(relation.getFeatures());
+		}
+
+		private void unregisterRelation(Relation relation) {
+			unregisterFeatureMap(relation.getFeatures());
+		}
+
+		private void registerFeatureMap(FeatureMap featureMap) {
+			featureMap.addFeatureMapListener(this);
+		}
+
+		private void unregisterFeatureMap(FeatureMap featureMap) {
+			featureMap.removeFeatureMapListener(this);
 		}
 
 		@Override
 		public void featureMapUpdated() {
-			corpus.documentChanged(document);
+			changed = true;
 		}
-	}
 
-	protected final void documentChanged(Document document) {
-		changedDocuments.add(document);
+		@Override
+		public void relationAdded(RelationSetEvent e) {
+			changed = true;
+			registerRelation(e.getRelation());
+		}
+
+		@Override
+		public void relationRemoved(RelationSetEvent e) {
+			changed = true;
+			unregisterRelation(e.getRelation());
+		}
+
+		@Override
+		public void annotationAdded(AnnotationSetEvent e) {
+			changed = true;
+			registerAnnotation(e.getAnnotation());
+		}
+
+		@Override
+		public void annotationRemoved(AnnotationSetEvent e) {
+			changed = true;
+			unregisterAnnotation(e.getAnnotation());
+		}
+
+		@Override
+		public void annotationSetAdded(DocumentEvent e) {
+			changed = true;
+			AnnotationSet annotationSet = document.getAnnotations(e.getAnnotationSetName());
+			registerAnnotationSet(annotationSet);
+		}
+
+		@Override
+		public void annotationSetRemoved(DocumentEvent e) {
+			changed = true;
+			AnnotationSet annotationSet = annotationSets.get(e.getAnnotationSetName());
+			unregisterAnnotationSet(annotationSet);
+		}
+
+		@Override
+		public void contentEdited(DocumentEvent e) {
+			changed = true;
+		}
+
+		@Override
+		public void annotationUpdated(AnnotationEvent e) {
+			changed = true;
+		}
+
 	}
 
 	protected final boolean hasDocumentChanged(Document document) {
-		return changedDocuments.contains(document);
+		return documentChangeObservers.get(document).changed;
 	}
 
 	private final void unload() {
@@ -467,16 +545,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 					"document already loaded " + document + " at position " + indexOf(document));
 		}
 		loadedDocuments.put(index, document);
-
-		document.addDocumentListener(documentListener);
-		documentAnnotationSets.put(document, new HashMap<>(document.getNamedAnnotationSets()));
-		document.getAnnotations().addAnnotationSetListener(annotationSetListener);
-		for (AnnotationSet annotationSet : document.getNamedAnnotationSets().values()) {
-			annotationSet.addAnnotationSetListener(annotationSetListener);
-		}
-		FeatureMapListener featureMapListener = new VirtualCorpusFeatureMapListener(this, document);
-		document.getFeatures().addFeatureMapListener(featureMapListener);
-		documentFeatureMapListeners.put(document, featureMapListener);
+		documentChangeObservers.put(document, new DocumentChangeObserver(document));
 	}
 
 	@Override
@@ -497,8 +566,10 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 		if (this.contains(document)) {
 			try {
+				boolean changed = hasDocumentChanged(document);
+
 				if (!readonlyDocuments && !unloaded) {
-					if (changedDocuments.remove(document)) {
+					if (changed) {
 						saveDocument(document);
 					}
 				}
@@ -507,12 +578,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			}
 			int index = this.indexOf(document);
 			loadedDocuments.remove(index);
-			document.removeDocumentListener(documentListener);
-			documentAnnotationSets.remove(document);
-			for (AnnotationSet annotationSet : document.getNamedAnnotationSets().values()) {
-				annotationSet.removeAnnotationSetListener(annotationSetListener);
-			}
-			document.getFeatures().removeFeatureMapListener(documentFeatureMapListeners.remove(document));
+			documentChangeObservers.remove(document).unregisterDocument();
 			documentUnloaded(index, document);
 		}
 	}
