@@ -64,6 +64,8 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected String idColumn;
 	protected String contentColumns;
 	protected String featureColumns;
+	protected Integer resultSetType;
+	protected Integer resultSetConcurrency;
 	protected Integer fetchIds;
 	protected Integer fetchRows;
 	protected String exportColumnSuffix;
@@ -156,6 +158,26 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 	public String getFeatureColumns() {
 		return featureColumns;
+	}
+
+	@CreoleParameter(comment = "The type for the result set (see java.sql.ResultSet TYPE_FORWARD_ONLY,TYPE_SCROLL_SENSITIVE,TYPE_SCROLL_INSENSITIVE)", defaultValue = ""
+			+ ResultSet.TYPE_FORWARD_ONLY)
+	public void setResultSetType(Integer resultSetType) {
+		this.resultSetType = resultSetType;
+	}
+
+	public Integer getResultSetType() {
+		return resultSetType;
+	}
+
+	@CreoleParameter(comment = "The concurrency for the result set (see java.sql.ResultSet CONCUR_READ_ONLY,CONCUR_UPDATABLE)", defaultValue = ""
+			+ ResultSet.CONCUR_READ_ONLY)
+	public void setResultSetConcurrency(Integer resultSetConcurrency) {
+		this.resultSetConcurrency = resultSetConcurrency;
+	}
+
+	public Integer getResultSetConcurrency() {
+		return resultSetConcurrency;
 	}
 
 	@Optional
@@ -301,22 +323,17 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		this.columns.addAll(exportColumnMapping.values());
 
 		try {
-			if (connection.getMetaData().supportsResultSetConcurrency(ResultSet.TYPE_SCROLL_INSENSITIVE,
-					ResultSet.CONCUR_UPDATABLE)) {
-				idStatement = connection.prepareStatement(prepareQuery(SELECT_ID_SQL),
-						ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
-				valuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL),
-						ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE);
-			} else if (connection.getMetaData().supportsResultSetConcurrency(ResultSet.TYPE_SCROLL_INSENSITIVE,
-					ResultSet.CONCUR_READ_ONLY)) {
-				idStatement = connection.prepareStatement(prepareQuery(SELECT_ID_SQL),
-						ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
-				valuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL),
-						ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
-			} else {
-				valuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL));
-				idStatement = connection.prepareStatement(prepareQuery(SELECT_ID_SQL));
+			if (connection.getMetaData().supportsResultSetType(resultSetType)) {
+				throw new ResourceInstantiationException("resultSetType is not supported: " + resultSetType);
 			}
+			if (connection.getMetaData().supportsResultSetConcurrency(resultSetType, resultSetConcurrency)) {
+				throw new ResourceInstantiationException(
+						"resultSetConcurrency is not supported: " + resultSetConcurrency);
+			}
+			idStatement = connection.prepareStatement(prepareQuery(SELECT_ID_SQL), resultSetType,
+					ResultSet.CONCUR_READ_ONLY);
+			valuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL), resultSetType,
+					resultSetConcurrency);
 			if (!readonlyDocuments && valuesStatement.getResultSetConcurrency() != ResultSet.CONCUR_UPDATABLE) {
 				if (hasValue(exportColumnSuffix)) {
 					updateStatements = prepareStatements(UPDATE_VALUES_SQL, contentColumns, exportColumnSuffix);
