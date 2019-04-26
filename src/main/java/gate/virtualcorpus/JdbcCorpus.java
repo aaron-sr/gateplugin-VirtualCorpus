@@ -335,10 +335,10 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		this.columns.addAll(exportColumnMapping.values());
 
 		try {
-			if (connection.getMetaData().supportsResultSetType(resultSetType)) {
+			if (!connection.getMetaData().supportsResultSetType(resultSetType)) {
 				throw new ResourceInstantiationException("resultSetType is not supported: " + resultSetType);
 			}
-			if (connection.getMetaData().supportsResultSetConcurrency(resultSetType, resultSetConcurrency)) {
+			if (!connection.getMetaData().supportsResultSetConcurrency(resultSetType, resultSetConcurrency)) {
 				throw new ResourceInstantiationException(
 						"resultSetConcurrency is not supported: " + resultSetConcurrency);
 			}
