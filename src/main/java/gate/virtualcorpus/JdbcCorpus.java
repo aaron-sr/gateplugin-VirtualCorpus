@@ -66,6 +66,9 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected String featureColumns;
 	protected String exportColumnSuffix;
 	protected String exportEncoding;
+	protected Integer maxRowsSelected;
+	protected Boolean autoCommit;
+	protected Integer maxUpdates;
 	protected Integer resultSetType;
 	protected Integer resultSetConcurrency;
 	protected Integer fetchDirection;
@@ -84,6 +87,8 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	private PreparedStatement valuesStatement;
 	private ResultSet valuesResultSet;
 	private Map<String, PreparedStatement> updateStatements;
+	private Map<ResultSet, Integer> rowsSelectCounts = new HashMap<>();
+	private Integer updateCount = 0;
 
 	private Map<Integer, Object> loadedIds = new HashMap<>();
 
@@ -181,6 +186,35 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return exportEncoding;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "The maximum count for row select on results sets, before close (e.g. if result sets caches all data, might leak memory)", defaultValue = "")
+	public void setMaxRowsSelected(Integer maxRowsSelected) {
+		this.maxRowsSelected = maxRowsSelected;
+	}
+
+	public Integer getMaxRowsSelected() {
+		return maxRowsSelected;
+	}
+
+	@CreoleParameter(comment = "Set connection to autocommit", defaultValue = "true")
+	public void setAutoCommit(Boolean autoCommit) {
+		this.autoCommit = autoCommit;
+	}
+
+	public Boolean getAutoCommit() {
+		return autoCommit;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "The maximum count for row updates on results sets, before commit (e.g. if result sets caches all data, might leak memory)", defaultValue = "")
+	public void setMaxRowsUpdated(Integer maxRowsUpdated) {
+		this.maxUpdates = maxRowsUpdated;
+	}
+
+	public Integer getMaxRowsUpdated() {
+		return maxUpdates;
+	}
+
 	@CreoleParameter(comment = "The type for the result sets (see java.sql.ResultSet TYPE_FORWARD_ONLY,TYPE_SCROLL_SENSITIVE,TYPE_SCROLL_INSENSITIVE)", defaultValue = ""
 			+ ResultSet.TYPE_FORWARD_ONLY)
 	public void setResultSetType(Integer resultSetType) {
@@ -266,6 +300,9 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 				properties.put("characterEncoding", encoding);
 			}
 			connection = DriverManager.getConnection(jdbcUrl, properties);
+			if (autoCommit != null) {
+				connection.setAutoCommit(autoCommit);
+			}
 		} catch (Exception e) {
 			throw new ResourceInstantiationException("Could not get driver/connection", e);
 		}
@@ -378,6 +415,9 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 				valuesResultSet.updateRow();
 			}
 			if (connection != null && !connection.isClosed()) {
+				if (!connection.getAutoCommit()) {
+					connection.commit();
+				}
 				connection.close();
 			}
 		} catch (SQLException e) {
@@ -479,6 +519,9 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			updateStatement.setBytes(1, bytes);
 			updateStatement.setObject(2, id);
 			updateStatement.executeUpdate();
+			if (maxUpdates != null) {
+				updateCount++;
+			}
 
 			if (!connection.getMetaData().othersUpdatesAreVisible(idStatement.getResultSetType())) {
 				idResultSet.close();
@@ -487,6 +530,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 				valuesResultSet.close();
 			}
 		}
+		commitConnection();
 	}
 
 	@Override
@@ -579,6 +623,9 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			throws SQLException {
 		boolean reopened = false;
 		if (resultSet.isClosed()) {
+			if (maxRowsSelected != null) {
+				rowsSelectCounts.remove(resultSet);
+			}
 			resultSet = statement.executeQuery();
 			reopened = true;
 		}
@@ -586,15 +633,42 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		if (currentRow != row) {
 			if (!reopened && resultSet.getConcurrency() == ResultSet.CONCUR_UPDATABLE) {
 				resultSet.updateRow();
+				if (maxUpdates != null) {
+					updateCount++;
+				}
 			}
 			if (currentRow > row && resultSet.getType() == ResultSet.TYPE_FORWARD_ONLY) {
 				resultSet.close();
+				if (maxRowsSelected != null) {
+					rowsSelectCounts.remove(resultSet);
+				}
 				resultSet = statement.executeQuery();
 				reopened = true;
+			}
+			if (maxRowsSelected != null) {
+				Integer rowsSelectCount = rowsSelectCounts.getOrDefault(resultSet, 0);
+				if (rowsSelectCount >= maxRowsSelected) {
+					resultSet.close();
+					rowsSelectCounts.remove(resultSet);
+					resultSet = statement.executeQuery();
+					reopened = true;
+					rowsSelectCount = 0;
+				}
+				rowsSelectCounts.put(resultSet, rowsSelectCount + 1);
 			}
 			resultSet.absolute(row);
 		}
 		return resultSet;
+	}
+
+	private void commitConnection() throws SQLException {
+		if (!connection.getAutoCommit() && maxUpdates != null) {
+			if (updateCount >= maxUpdates) {
+				connection.commit();
+				updateCount = 0;
+			}
+		}
+
 	}
 
 }
