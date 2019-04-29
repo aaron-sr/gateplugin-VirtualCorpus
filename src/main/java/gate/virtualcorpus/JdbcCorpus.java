@@ -455,7 +455,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		valuesResultSet = moveResultSetToRow(valuesStatement, valuesResultSet, row);
 
 		Object id = valuesResultSet.getObject(idColumn);
-		loadedIds.put(index, id);
+		loadedIds.putIfAbsent(row, id);
 		Object content = null;
 		String encoding = null;
 		String mimeType = null;
@@ -550,7 +550,19 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 	@Override
 	protected void documentUnloaded(int index, Document document) {
-		int row = row(index);
+		Integer row = row(index);
+
+		if (contentColumnList.size() > 1) {
+			int startIndex = index - (index % contentColumnList.size());
+			int endIndex = startIndex + contentColumnList.size();
+
+			for (Integer i = startIndex; i < endIndex; i++) {
+				if (i != index && isDocumentLoaded(i)) {
+					return;
+				}
+			}
+		}
+
 		loadedIds.remove(row);
 	}
 
@@ -571,7 +583,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return id + " " + contentColumn;
 	}
 
-	private int row(int index) {
+	private Integer row(int index) {
 		return (index / contentColumnList.size()) + 1;
 	}
 
