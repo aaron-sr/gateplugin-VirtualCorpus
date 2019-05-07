@@ -79,6 +79,11 @@
 			<artifactId>mongo-java-driver</artifactId>
 			<version>3.8.1</version>
 		</dependency>
+		<dependency>
+			<groupId>org.mapdb</groupId>
+			<artifactId>mapdb</artifactId>
+			<version>3.0.7</version>
+		</dependency>
 	</dependencies>
 
 </project>
