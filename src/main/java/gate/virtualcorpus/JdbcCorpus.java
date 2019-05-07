@@ -75,13 +75,13 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected Integer fetchIds;
 	protected Integer fetchRows;
 
-	private Connection connection;
 	private Collection<String> allTableColumns;
 	private List<String> columns;
 	private List<String> contentColumnList;
 	private List<String> featureColumnList;
 	private Map<String, String> exportColumnMapping;
 
+	private Connection connection;
 	private PreparedStatement idStatement;
 	private ResultSet idResultSet;
 	private PreparedStatement valuesStatement;
@@ -167,7 +167,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Optional
-	@CreoleParameter(comment = "suffix for value columns, where exported data is written (non-existent columns will be created)", defaultValue = "")
+	@CreoleParameter(comment = "suffix for value columns, where exported data is written (non-existent columns will not be created)", defaultValue = "")
 	public void setExportColumnSuffix(String exportColumnSuffix) {
 		this.exportColumnSuffix = exportColumnSuffix;
 	}
@@ -456,6 +456,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 		Object id = valuesResultSet.getObject(idColumn);
 		loadedIds.putIfAbsent(row, id);
+
 		Object content = null;
 		String encoding = null;
 		String mimeType = null;
@@ -550,8 +551,6 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 	@Override
 	protected void documentUnloaded(int index, Document document) {
-		Integer row = row(index);
-
 		if (contentColumnList.size() > 1) {
 			int startIndex = index - (index % contentColumnList.size());
 			int endIndex = startIndex + contentColumnList.size();
@@ -563,6 +562,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			}
 		}
 
+		Integer row = row(index);
 		loadedIds.remove(row);
 	}
 
