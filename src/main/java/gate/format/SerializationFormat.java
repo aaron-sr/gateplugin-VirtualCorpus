@@ -9,19 +9,19 @@ import org.apache.log4j.Logger;
 
 import gate.Annotation;
 import gate.Document;
-import gate.DocumentFormat;
 import gate.Resource;
 import gate.TextualDocument;
 import gate.corpora.DocumentContentImpl;
 import gate.corpora.MimeType;
 import gate.corpora.RepositioningInfo;
+import gate.corpora.TextualDocumentFormat;
 import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.AutoInstance;
 import gate.creole.metadata.CreoleResource;
 import gate.util.DocumentFormatException;
 
 @CreoleResource(name = "Serialization Format", isPrivate = true, autoinstances = { @AutoInstance(hidden = true) })
-public class SerializationFormat extends DocumentFormat {
+public class SerializationFormat extends TextualDocumentFormat {
 	private static final long serialVersionUID = 7836956734599945213L;
 	private static Logger logger = Logger.getLogger(SerializationFormat.class);
 
