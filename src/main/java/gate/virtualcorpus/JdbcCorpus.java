@@ -22,6 +22,7 @@ import gate.Corpus;
 import gate.Document;
 import gate.Factory;
 import gate.FeatureMap;
+import gate.GateConstants;
 import gate.Resource;
 import gate.corpora.DocumentImpl;
 import gate.creole.ResourceInstantiationException;
@@ -479,6 +480,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			content = content.toString();
 		}
 		FeatureMap features = Factory.newFeatureMap();
+		features.put(GateConstants.THROWEX_FORMAT_PROPERTY_NAME, true);
 		for (String featureColumn : featureColumnList) {
 			Object feature = valuesResultSet.getObject(featureColumn);
 			features.put(featureColumn, feature);
