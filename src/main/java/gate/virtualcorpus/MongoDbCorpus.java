@@ -54,6 +54,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	protected String collectionName;
 	protected String contentKeys;
 	protected String featureKeys;
+	protected String featureKeyPrefix;
 	protected String exportKeySuffix;
 	protected String exportEncoding;
 	protected Integer batchSize;
@@ -143,6 +144,16 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 
 	public String getFeatureKeys() {
 		return featureKeys;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "prefix for feature key of gate document", defaultValue = "")
+	public void setFeatureKeyPrefix(String featureKeyPrefix) {
+		this.featureKeyPrefix = featureKeyPrefix;
+	}
+
+	public String getFeatureKeyPrefix() {
+		return featureKeyPrefix;
 	}
 
 	@Optional
@@ -322,7 +333,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		features.put(GateConstants.THROWEX_FORMAT_PROPERTY_NAME, true);
 		for (String featureKey : featureKeyList) {
 			Object feature = mongoDbDocument.get(featureKey);
-			features.put(featureKey, feature);
+			features.put(featureKeyPrefix + featureKey, feature);
 		}
 		FeatureMap params = Factory.newFeatureMap();
 		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);

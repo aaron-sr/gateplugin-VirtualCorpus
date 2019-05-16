@@ -65,6 +65,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected String idColumn;
 	protected String contentColumns;
 	protected String featureColumns;
+	protected String featureKeyPrefix;
 	protected String exportColumnSuffix;
 	protected String exportEncoding;
 	protected Integer maxRowsSelected;
@@ -165,6 +166,16 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 	public String getFeatureColumns() {
 		return featureColumns;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "prefix for feature key of gate document", defaultValue = "")
+	public void setFeatureKeyPrefix(String featureKeyPrefix) {
+		this.featureKeyPrefix = featureKeyPrefix;
+	}
+
+	public String getFeatureKeyPrefix() {
+		return featureKeyPrefix;
 	}
 
 	@Optional
@@ -483,7 +494,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		features.put(GateConstants.THROWEX_FORMAT_PROPERTY_NAME, true);
 		for (String featureColumn : featureColumnList) {
 			Object feature = valuesResultSet.getObject(featureColumn);
-			features.put(featureColumn, feature);
+			features.put(featureKeyPrefix + featureColumn, feature);
 		}
 		FeatureMap params = Factory.newFeatureMap();
 		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
