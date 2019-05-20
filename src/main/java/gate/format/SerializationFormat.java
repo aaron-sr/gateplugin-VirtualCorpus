@@ -1,7 +1,10 @@
 package gate.format;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.ObjectInputStream;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -26,28 +29,50 @@ public class SerializationFormat extends TextualDocumentFormat {
 	private static Logger logger = Logger.getLogger(SerializationFormat.class);
 
 	@Override
-	public void unpackMarkup(Document document) throws DocumentFormatException {
+	public Resource init() throws ResourceInstantiationException {
+		MimeType mime = new MimeType("application", "java-serialized-object");
+		mimeString2ClassHandlerMap.put(mime.getType() + "/" + mime.getSubtype(), this);
+		mimeString2mimeTypeMap.put(mime.getType() + "/" + mime.getSubtype(), mime);
+		suffixes2mimeTypeMap.put("ser", mime);
+//		magic2mimeTypeMap.put("<?xml", mime);
+		setMimeType(mime);
+		return this;
+	}
 
+	@Override
+	public void unpackMarkup(Document document, RepositioningInfo repInfo, RepositioningInfo ampCodingInfo)
+			throws DocumentFormatException {
+		unpackMarkup(document);
+	}
+
+	@Override
+	public void unpackMarkup(Document document) throws DocumentFormatException {
 		try {
-			byte[] bytes;
-			if (document instanceof TextualDocument) {
-				bytes = document.getContent().toString().getBytes(((TextualDocument) document).getEncoding());
-			} else {
-				bytes = document.getContent().toString().getBytes();
-			}
-			if (bytes.length > 0) {
-				try (ObjectInputStream objectInputStream = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
-					Document readDocument = (Document) objectInputStream.readObject();
-					validateEmptyDocument(document);
-					copyDocumentValues(readDocument, document);
+			InputStream bytes = openContentInputStream(document);
+			if (bytes.available() > 0) {
+				Document readDocument;
+				try (ObjectInputStream objectInputStream = new ObjectInputStream(bytes)) {
+					readDocument = (Document) objectInputStream.readObject();
 				}
+				validateEmptyDocument(document);
+				copyDocumentValues(readDocument, document);
 			}
 		} catch (Exception e) {
 			throw new DocumentFormatException(e);
 		}
 	}
 
-	private void validateEmptyDocument(Document document) throws DocumentFormatException {
+	protected InputStream openContentInputStream(Document document) throws UnsupportedEncodingException, IOException {
+		byte[] bytes;
+		if (document instanceof TextualDocument) {
+			bytes = document.getContent().toString().getBytes(((TextualDocument) document).getEncoding());
+		} else {
+			bytes = document.getContent().toString().getBytes();
+		}
+		return new ByteArrayInputStream(bytes);
+	}
+
+	protected static void validateEmptyDocument(Document document) throws DocumentFormatException {
 		if (!document.getAnnotations().isEmpty()) {
 			throw new DocumentFormatException("document has already annotations in default annotation set");
 		}
@@ -77,24 +102,7 @@ public class SerializationFormat extends TextualDocumentFormat {
 		}
 	}
 
-	@Override
-	public void unpackMarkup(Document document, RepositioningInfo repInfo, RepositioningInfo ampCodingInfo)
-			throws DocumentFormatException {
-		unpackMarkup(document);
-	}
-
-	@Override
-	public Resource init() throws ResourceInstantiationException {
-		MimeType mime = new MimeType("application", "java-serialized-object");
-		mimeString2ClassHandlerMap.put(mime.getType() + "/" + mime.getSubtype(), this);
-		mimeString2mimeTypeMap.put(mime.getType() + "/" + mime.getSubtype(), mime);
-		suffixes2mimeTypeMap.put("ser", mime);
-//		magic2mimeTypeMap.put("<?xml", mime);
-		setMimeType(mime);
-		return this;
-	}
-
-	public static final void copyDocumentValues(Document fromDocument, Document toDocument) {
+	protected static final void copyDocumentValues(Document fromDocument, Document toDocument) {
 		toDocument.setContent(new DocumentContentImpl(fromDocument.getContent().toString()));
 		if (!fromDocument.getAnnotations().isEmpty()) {
 			for (Annotation annotation : fromDocument.getAnnotations()) {

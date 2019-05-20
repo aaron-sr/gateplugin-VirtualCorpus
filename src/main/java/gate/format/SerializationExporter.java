@@ -18,12 +18,17 @@ public class SerializationExporter extends DocumentExporter {
 	private static Logger logger = Logger.getLogger(SerializationExporter.class);
 
 	public SerializationExporter() {
-		super("Java Serialization", "ser", "application/java-serialized-object");
+		this("ser", "application/java-serialized-object");
+	}
+
+	protected SerializationExporter(String fileExtension, String mimeType) {
+		super("Java Serialization", fileExtension, mimeType);
 	}
 
 	@Override
 	public void export(Document document, OutputStream outputStream, FeatureMap options) throws IOException {
 		new ObjectOutputStream(outputStream).writeObject(document);
+		outputStream.flush();
 	}
 
 }
