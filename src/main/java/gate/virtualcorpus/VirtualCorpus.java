@@ -550,17 +550,20 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final boolean isDocumentLoaded(int index) {
+		checkLoaded();
 		checkIndex(index);
 		return loadedDocuments.containsKey(index);
 	}
 
 	public final boolean isDocumentNameLoaded(int index) {
+		checkLoaded();
 		checkIndex(index);
 		return loadedDocumentNames.containsKey(index);
 	}
 
 	@Override
 	public final void unloadDocument(Document document) {
+		checkLoaded();
 		if (document == null) {
 			return;
 		}
@@ -585,6 +588,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final List<String> getDocumentNames() {
+		checkLoaded();
 		List<String> documentNames = new ArrayList<>();
 		for (int i = 0; i < size(); i++) {
 			String documentName = getDocumentName(i);
@@ -595,6 +599,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final String getDocumentName(int index) {
+		checkLoaded();
 		checkIndex(index);
 		if (loadedDocumentNames.containsKey(index)) {
 			updateLruDocumentNameIndex(index);
@@ -613,6 +618,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final Document get(int index) {
+		checkLoaded();
 		checkIndex(index);
 		if (loadedDocuments.containsKey(index)) {
 			return loadedDocuments.get(index);
@@ -635,6 +641,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final int size() {
+		checkLoaded();
 		if (size == null) {
 			try {
 				size = loadSize();
@@ -652,6 +659,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final int indexOf(Object object) {
+		checkLoaded();
 		if (object instanceof Document) {
 			return loadedDocuments.entrySet().stream().filter(e -> e.getValue().equals(object)).map(e -> e.getKey())
 					.min(Integer::compareTo).orElse(-1);
@@ -661,6 +669,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final int lastIndexOf(Object object) {
+		checkLoaded();
 		if (object instanceof Document) {
 			return loadedDocuments.entrySet().stream().filter(e -> e.getValue().equals(object)).map(e -> e.getKey())
 					.max(Integer::compareTo).orElse(-1);
@@ -670,6 +679,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final boolean contains(Object object) {
+		checkLoaded();
 		if (object instanceof Document) {
 			return loadedDocuments.containsValue(object);
 		}
@@ -678,6 +688,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final boolean containsAll(Collection<?> collection) {
+		checkLoaded();
 		return loadedDocuments.values().containsAll(collection);
 	}
 
@@ -768,6 +779,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final boolean remove(Object object) {
+		checkMutable();
+		checkLoaded();
 		if (!this.contains(object)) {
 			return false;
 		}
@@ -909,11 +922,13 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final List<Document> subList(int fromIndex, int toIndex) {
+		checkLoaded();
 		throw new UnsupportedOperationException();
 	}
 
 	@Override
 	public final Object[] toArray() {
+		checkLoaded();
 		List<Document> documents = new ArrayList<>();
 		for (int i = 0; i < size(); i++) {
 			Document document = get(i);
@@ -925,6 +940,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	@Override
 	@SuppressWarnings("unchecked")
 	public <T> T[] toArray(T[] a) {
+		checkLoaded();
 		if (a.length < size)
 			a = (T[]) java.lang.reflect.Array.newInstance(a.getClass().getComponentType(), size);
 
@@ -941,16 +957,19 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final Iterator<Document> iterator() {
+		checkLoaded();
 		return new VirtualCorpusIterator(this);
 	}
 
 	@Override
 	public final ListIterator<Document> listIterator(int i) {
+		checkLoaded();
 		return new VirtualCorpusListIterator(this, i);
 	}
 
 	@Override
 	public final ListIterator<Document> listIterator() {
+		checkLoaded();
 		return listIterator(0);
 	}
 
