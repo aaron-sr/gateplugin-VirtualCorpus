@@ -63,6 +63,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected String jdbcPassword;
 	protected String tableName;
 	protected String idColumn;
+	protected String nameColumns;
 	protected String contentColumns;
 	protected String featureColumns;
 	protected String featureKeyPrefix;
@@ -79,6 +80,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 	private Collection<String> allTableColumns;
 	private List<String> columns;
+	private List<String> nameColumnList;
 	private List<String> contentColumnList;
 	private List<String> featureColumnList;
 	private Map<String, String> exportColumnMapping;
@@ -150,6 +152,16 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return idColumn;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "The document name columns (separate multiple values by comma)", defaultValue = "")
+	public void setNameColumns(String nameColumns) {
+		this.nameColumns = nameColumns;
+	}
+
+	public String getNameColumns() {
+		return nameColumns;
+	}
+
 	@CreoleParameter(comment = "The document content columns (separate multiple values by comma, * for all columns)", defaultValue = "*")
 	public void setContentColumns(String contentColumns) {
 		this.contentColumns = contentColumns;
@@ -159,6 +171,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return contentColumns;
 	}
 
+	@Optional
 	@CreoleParameter(comment = "The document feature columns (separate multiple values by comma)", defaultValue = "")
 	public void setFeatureColumns(String featureColumns) {
 		this.featureColumns = featureColumns;
@@ -327,6 +340,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		if (!allTableColumns.contains(idColumn)) {
 			throw new ResourceInstantiationException("id column does not exist");
 		}
+		List<String> nameColumns = splitUserInput(this.nameColumns);
 		List<String> contentColumns = splitUserInput(this.contentColumns);
 		if (contentColumns.contains(idColumn)) {
 			throw new ResourceInstantiationException("contentColumns cannot contain " + idColumn);
@@ -361,6 +375,10 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 				}
 			}
 		}
+		if (!allTableColumns.containsAll(nameColumns)) {
+			nameColumns.removeAll(allTableColumns);
+			throw new ResourceInstantiationException("name columns does not exist: " + nameColumns);
+		}
 		if (!allTableColumns.containsAll(contentColumns)) {
 			contentColumns.removeAll(allTableColumns);
 			throw new ResourceInstantiationException("content columns does not exist: " + contentColumns);
@@ -375,10 +393,12 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			exportColumns.removeAll(allTableColumns);
 			throw new ResourceInstantiationException("export columns does not exist: " + exportColumns);
 		}
+		this.nameColumnList = nameColumns;
 		this.contentColumnList = contentColumns;
 		this.featureColumnList = featureColumns;
 		this.exportColumnMapping = exportColumnMapping;
 		this.columns = new ArrayList<>();
+		this.columns.addAll(nameColumns);
 		this.columns.addAll(contentColumns);
 		this.columns.addAll(featureColumns);
 		this.columns.addAll(exportColumnMapping.values());
@@ -455,8 +475,14 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		Integer row = row(index);
 		String contentColumn = column(index);
 
-		Object id = getId(row);
-		return buildDocumentName(id, contentColumn);
+		if (nameColumnList.isEmpty()) {
+			String id = getId(row).toString();
+			return buildDocumentName(contentColumn, id);
+		} else {
+			valuesResultSet = moveResultSetToRow(valuesStatement, valuesResultSet, row);
+			return buildDocumentName(contentColumn, getStringValues(valuesResultSet, nameColumnList));
+		}
+
 	}
 
 	@Override
@@ -500,7 +526,12 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
 		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
 		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
-		String documentName = buildDocumentName(id, contentColumn);
+		String documentName;
+		if (nameColumnList.isEmpty()) {
+			documentName = buildDocumentName(contentColumn, id.toString());
+		} else {
+			documentName = buildDocumentName(contentColumn, getStringValues(valuesResultSet, nameColumnList));
+		}
 		return (Document) Factory.createResource(DocumentImpl.class.getName(), params, features, documentName);
 	}
 
@@ -592,8 +623,20 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return id;
 	}
 
-	private String buildDocumentName(Object id, String contentColumn) {
-		return id + " " + contentColumn;
+	private String buildDocumentName(String contentColumn, String... ids) {
+		String name = String.join(" ", ids);
+		if (contentColumnList.size() > 1) {
+			name += " " + contentColumn;
+		}
+		return name;
+	}
+
+	private String[] getStringValues(ResultSet resultSet, List<String> columns) throws SQLException {
+		List<String> values = new ArrayList<>();
+		for (String column : columns) {
+			values.add(resultSet.getString(column));
+		}
+		return values.toArray(new String[] {});
 	}
 
 	private Integer row(int index) {

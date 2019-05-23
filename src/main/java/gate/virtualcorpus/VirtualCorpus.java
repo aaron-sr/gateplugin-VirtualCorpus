@@ -515,7 +515,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		checkIndex(index);
 		if (cacheDocumentNames != null && cacheDocumentNames > 0) {
 			if (loadedDocumentNames.containsKey(index)) {
-				throw new IllegalArgumentException("index already loaded" + index);
+				throw new IllegalArgumentException("document name index already loaded: " + index);
 			}
 			loadedDocumentNames.put(index, documentName);
 			updateLruDocumentNameIndex(index);
@@ -538,14 +538,24 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	protected final void documentLoaded(int index, Document document) {
 		checkIndex(index);
 		if (loadedDocuments.containsKey(index)) {
-			throw new IllegalArgumentException("index already loaded" + index);
+			throw new IllegalArgumentException("document index already loaded: " + index);
 		}
-		if (document != null && this.contains(document)) {
-			throw new IllegalArgumentException(
-					"document already loaded " + document + " at position " + indexOf(document));
+		if (document != null) {
+			if (this.contains(document)) {
+				throw new IllegalArgumentException(
+						"document already loaded " + document + " at another index " + indexOf(document));
+			}
+			if (this.isDocumentNameLoaded(index)) {
+				if (!document.getName().contentEquals(this.getDocumentName(index))) {
+					throw new IllegalArgumentException("document name already loaded" + index + " and different");
+				}
+			} else {
+				documentNameLoaded(index, document.getName());
+			}
 		}
 		loadedDocuments.put(index, document);
 		documentChangeObservers.put(document, new DocumentChangeObserver(document));
+
 	}
 
 	@Override

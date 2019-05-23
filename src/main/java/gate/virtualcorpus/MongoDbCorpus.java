@@ -52,6 +52,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	protected String password;
 	protected String databaseName;
 	protected String collectionName;
+	protected String nameKeys;
 	protected String contentKeys;
 	protected String featureKeys;
 	protected String featureKeyPrefix;
@@ -60,6 +61,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	protected Integer batchSize;
 	protected Boolean cacheIds;
 
+	private List<String> nameKeyList;
 	private List<String> contentKeyList;
 	private List<String> featureKeyList;
 	private Map<String, String> exportKeyMapping;
@@ -128,6 +130,16 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		return collectionName;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "The name of the keys for the document name (separate multiple values by comma)", defaultValue = "")
+	public void setNameKeys(String nameKeys) {
+		this.nameKeys = nameKeys;
+	}
+
+	public String getNameKeys() {
+		return nameKeys;
+	}
+
 	@CreoleParameter(comment = "The name of the content keys (separate multiple values by comma)", defaultValue = "")
 	public void setContentKeys(String contentKeys) {
 		this.contentKeys = contentKeys;
@@ -137,6 +149,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		return contentKeys;
 	}
 
+	@Optional
 	@CreoleParameter(comment = "The name of the feature keys (separate multiple values by comma)", defaultValue = "")
 	public void setFeatureKeys(String featureKeys) {
 		this.featureKeys = featureKeys;
@@ -228,6 +241,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		}
 		database = client.getDatabase(databaseName);
 		collection = database.getCollection(collectionName);
+		nameKeyList = splitUserInput(this.nameKeys);
 		contentKeyList = splitUserInput(this.contentKeys);
 		featureKeyList = splitUserInput(this.featureKeys);
 		if (hasValue(exportKeySuffix)) {
@@ -289,9 +303,14 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		Integer documentIndex = documentIndex(index);
 		String contentKey = contentKey(index);
 
-		Object id = getId(documentIndex);
+		if (nameKeyList.isEmpty()) {
+			String id = getId(documentIndex);
+			return buildDocumentName(contentKey, id);
+		} else {
+			org.bson.Document mongoDbDocument = getDocument(documentIndex, nameKeyList);
+			return buildDocumentName(contentKey, getStringValues(mongoDbDocument, nameKeyList));
+		}
 
-		return buildDocumentName(id, contentKey);
 	}
 
 	@Override
@@ -300,6 +319,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		String contentKey = contentKey(index);
 
 		List<String> includeKeys = new ArrayList<>();
+		includeKeys.addAll(nameKeyList);
 		includeKeys.add(contentKey);
 		includeKeys.addAll(featureKeyList);
 		if (hasValue(exportKeySuffix)) {
@@ -339,7 +359,13 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
 		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
 		params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
-		String documentName = buildDocumentName(mongoDbDocument.get(ID_KEY_NAME), contentKey);
+
+		String documentName;
+		if (nameKeyList.isEmpty()) {
+			documentName = buildDocumentName(contentKey, getId(mongoDbDocument));
+		} else {
+			documentName = buildDocumentName(contentKey, getStringValues(mongoDbDocument, nameKeyList));
+		}
 		return (Document) Factory.createResource(DocumentImpl.class.getName(), params, features, documentName);
 	}
 
@@ -381,7 +407,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 			}
 			while (iteratorPosition <= documentIndex) {
 				org.bson.Document mongoDbDocument = iterator.next();
-				String next = mongoDbDocument.getObjectId(ID_KEY_NAME).toHexString();
+				String next = getId(mongoDbDocument);
 				idCache.put(iteratorPosition, next);
 				try {
 					if (iteratorPosition == documentIndex) {
@@ -392,7 +418,11 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 				}
 			}
 		}
-		return getDocument(documentIndex, Collections.emptyList()).getObjectId(ID_KEY_NAME).toHexString();
+		return getId(getDocument(documentIndex, Collections.emptyList()));
+	}
+
+	private String getId(org.bson.Document mongoDbDocument) {
+		return mongoDbDocument.getObjectId(ID_KEY_NAME).toHexString();
 	}
 
 	private org.bson.Document getDocument(Integer documentIndex, List<String> includeKeys) {
@@ -408,8 +438,20 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		return cursor.projection(Projections.include(includeKeys)).first();
 	}
 
-	private String buildDocumentName(Object id, String contentKey) {
-		return id + " " + contentKey;
+	private String buildDocumentName(String contentKey, String... ids) {
+		String name = String.join(" ", ids);
+		if (contentKeyList.size() > 1) {
+			name += " " + contentKey;
+		}
+		return name;
+	}
+
+	private String[] getStringValues(org.bson.Document document, List<String> keys) {
+		List<String> values = new ArrayList<>();
+		for (String key : keys) {
+			values.add(document.getString(key));
+		}
+		return values.toArray(new String[] {});
 	}
 
 	private int documentIndex(int index) {
