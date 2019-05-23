@@ -228,6 +228,9 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		if (!hasValue(contentKeys)) {
 			throw new ResourceInstantiationException("contentKeys must not be empty");
 		}
+		if (hasValue(exportKeySuffix) && !hasValue(exporterClassName)) {
+			throw new ResourceInstantiationException("exporterClassName must be set, if exportKeySuffix is set");
+		}
 
 		ServerAddress serverAddress = new ServerAddress(host, port);
 		MongoClientOptions options = MongoClientOptions.builder().build();

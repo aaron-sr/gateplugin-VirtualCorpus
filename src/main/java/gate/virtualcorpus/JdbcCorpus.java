@@ -307,6 +307,9 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		if (!hasValue(contentColumns)) {
 			throw new ResourceInstantiationException("contentColumns must not be empty");
 		}
+		if (hasValue(exportColumnSuffix) && !hasValue(exporterClassName)) {
+			throw new ResourceInstantiationException("exporterClassName must be set, if exportColumnSuffix is set");
+		}
 
 		try {
 			Class.forName(getJdbcDriver());
