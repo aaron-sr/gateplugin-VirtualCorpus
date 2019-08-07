@@ -71,10 +71,10 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	private MongoCollection<org.bson.Document> collection;
 	private FindIterable<org.bson.Document> cursor;
 	private int cursorPosition;
-	private Map<Integer, String> idCache;
 	private MongoCursor<org.bson.Document> iterator;
 	private int iteratorPosition;
 	private DB cacheDb;
+	private Map<Integer, String> idCache;
 
 	@CreoleParameter(comment = "The host of the MongoDB", defaultValue = "localhost")
 	public void setHost(String host) {
