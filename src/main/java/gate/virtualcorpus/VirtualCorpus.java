@@ -163,7 +163,10 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	protected final List<String> splitUserInput(String string) {
 		List<String> values = new ArrayList<>();
 		for (String value : string.split(",")) {
-			values.add(value.trim());
+			String trim = value.trim();
+			if (trim.length() > 0) {
+				values.add(trim);
+			}
 		}
 		return values;
 	}

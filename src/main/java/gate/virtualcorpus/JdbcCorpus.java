@@ -378,7 +378,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 				}
 			}
 		}
-		if (!allTableColumns.containsAll(nameColumns)) {
+		if (!nameColumns.isEmpty() && !allTableColumns.containsAll(nameColumns)) {
 			nameColumns.removeAll(allTableColumns);
 			throw new ResourceInstantiationException("name columns does not exist: " + nameColumns);
 		}
@@ -386,7 +386,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			contentColumns.removeAll(allTableColumns);
 			throw new ResourceInstantiationException("content columns does not exist: " + contentColumns);
 		}
-		if (!allTableColumns.containsAll(featureColumns)) {
+		if (!featureColumns.isEmpty() && !allTableColumns.containsAll(featureColumns)) {
 			featureColumns.removeAll(allTableColumns);
 			throw new ResourceInstantiationException("feature columns does not exist: " + featureColumns);
 		}
