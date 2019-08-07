@@ -17,7 +17,7 @@ public class CompressedSerializationExporter extends SerializationExporter {
 	private static Logger logger = Logger.getLogger(CompressedSerializationExporter.class);
 
 	public CompressedSerializationExporter() {
-		super("ser.zz", "application/compressed-java-serialized-object");
+		super("Compressed Java Serialization", "ser.zz", "application/compressed-java-serialized-object");
 	}
 
 	@Override

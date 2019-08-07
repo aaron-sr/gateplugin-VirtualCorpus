@@ -18,11 +18,11 @@ public class SerializationExporter extends DocumentExporter {
 	private static Logger logger = Logger.getLogger(SerializationExporter.class);
 
 	public SerializationExporter() {
-		this("ser", "application/java-serialized-object");
+		this("Java Serialization", "ser", "application/java-serialized-object");
 	}
 
-	protected SerializationExporter(String fileExtension, String mimeType) {
-		super("Java Serialization", fileExtension, mimeType);
+	public SerializationExporter(String fileType, String defaultExtension, String mimeType) {
+		super(fileType, defaultExtension, mimeType);
 	}
 
 	@Override
