@@ -186,7 +186,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Optional
-	@CreoleParameter(comment = "prefix for feature key of gate document", defaultValue = "")
+	@CreoleParameter(comment = "prefix for feature key of gate document", defaultValue = "jdbc:")
 	public void setFeatureKeyPrefix(String featureKeyPrefix) {
 		this.featureKeyPrefix = featureKeyPrefix;
 	}

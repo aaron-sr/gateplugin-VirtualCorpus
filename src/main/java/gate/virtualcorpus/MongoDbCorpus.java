@@ -164,7 +164,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Optional
-	@CreoleParameter(comment = "prefix for feature key of gate document", defaultValue = "")
+	@CreoleParameter(comment = "prefix for feature key of gate document", defaultValue = "mongodb:")
 	public void setFeatureKeyPrefix(String featureKeyPrefix) {
 		this.featureKeyPrefix = featureKeyPrefix;
 	}
