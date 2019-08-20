@@ -57,6 +57,8 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	protected String nameKeys;
 	protected String contentKeys;
 	protected String featureKeys;
+	protected String idFeatureName;
+	protected String contentKeyFeatureName;
 	protected String featureKeyPrefix;
 	protected String exportKeySuffix;
 	protected String exportEncoding;
@@ -354,6 +356,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 			includeKeys.add(exportKey);
 		}
 		org.bson.Document mongoDbDocument = getDocument(documentIndex, includeKeys);
+		String id = getId(mongoDbDocument);
 
 		Object content = null;
 		String encoding = null;
@@ -382,6 +385,12 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 			Object feature = mongoDbDocument.get(featureKey);
 			features.put(featureKeyPrefix + featureKey, feature);
 		}
+		if (hasValue(idFeatureName)) {
+			features.put(featureKeyPrefix + idFeatureName, id);
+		}
+		if (hasValue(contentKeyFeatureName)) {
+			features.put(featureKeyPrefix + contentKeyFeatureName, contentKey);
+		}
 		FeatureMap params = Factory.newFeatureMap();
 		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
 		params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
@@ -389,7 +398,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 
 		String documentName;
 		if (nameKeyList.isEmpty()) {
-			documentName = buildDocumentName(contentKey, getId(mongoDbDocument));
+			documentName = buildDocumentName(contentKey, id);
 		} else {
 			documentName = buildDocumentName(contentKey, getStringValues(mongoDbDocument, nameKeyList));
 		}

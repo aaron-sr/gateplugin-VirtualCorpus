@@ -68,6 +68,8 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected String nameColumns;
 	protected String contentColumns;
 	protected String featureColumns;
+	protected String idFeatureName;
+	protected String contentColumnFeatureName;
 	protected String featureKeyPrefix;
 	protected String exportColumnSuffix;
 	protected String exportEncoding;
@@ -183,6 +185,26 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 	public String getFeatureColumns() {
 		return featureColumns;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "feature name for the id (not set, if empty)", defaultValue = "id")
+	public void setIdFeatureName(String idFeatureName) {
+		this.idFeatureName = idFeatureName;
+	}
+
+	public String getIdFeatureName() {
+		return idFeatureName;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "feature name for the content column (not set, if empty)", defaultValue = "column")
+	public void setContentColumnFeatureName(String contentColumnFeatureName) {
+		this.contentColumnFeatureName = contentColumnFeatureName;
+	}
+
+	public String getContentColumnFeatureName() {
+		return contentColumnFeatureName;
 	}
 
 	@Optional
@@ -548,6 +570,12 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		for (String featureColumn : featureColumnList) {
 			Object feature = valuesResultSet.getObject(featureColumn);
 			features.put(featureKeyPrefix + featureColumn, feature);
+		}
+		if (hasValue(idFeatureName)) {
+			features.put(featureKeyPrefix + idFeatureName, id);
+		}
+		if (hasValue(contentColumnFeatureName)) {
+			features.put(featureKeyPrefix + contentColumnFeatureName, contentColumn);
 		}
 		FeatureMap params = Factory.newFeatureMap();
 		params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
