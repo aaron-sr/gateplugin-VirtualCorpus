@@ -1,5 +1,6 @@
 package gate.virtualcorpus;
 
+import java.io.ByteArrayOutputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -20,6 +21,7 @@ import org.apache.log4j.Logger;
 
 import gate.Corpus;
 import gate.Document;
+import gate.DocumentExporter;
 import gate.Factory;
 import gate.FeatureMap;
 import gate.GateConstants;
@@ -77,6 +79,8 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected Integer fetchDirection;
 	protected Integer fetchIds;
 	protected Integer fetchRows;
+	protected String encoding;
+	protected String mimeType;
 
 	private Collection<String> allTableColumns;
 	private List<String> columns;
@@ -291,10 +295,30 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 		return fetchRows;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "encoding to read and write document content", defaultValue = "")
+	public final void setEncoding(String encoding) {
+		this.encoding = encoding;
+	}
+
+	public final String getEncoding() {
+		return encoding;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "mimeType to read (and write, if exporterClassName is not set) document content", defaultValue = "")
+	public final void setMimeType(String mimeType) {
+		this.mimeType = mimeType;
+	}
+
+	public final String getMimeType() {
+		return mimeType;
+	}
+
 	@Override
 	public Resource init() throws ResourceInstantiationException {
-		checkValidMimeType();
-		checkValidExporterClassName();
+		checkValidMimeType(mimeType);
+		checkValidExporterClassName(exporterClassName);
 		if (!immutableCorpus) {
 			throw new ResourceInstantiationException("mutable jdbc corpus currently not supported");
 		}
@@ -505,7 +529,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			String exportColumn = exportColumnMapping.get(contentColumn);
 			content = valuesResultSet.getObject(exportColumn);
 			encoding = exportEncoding;
-			mimeType = getExporter().getMimeType();
+			mimeType = getExporterForClassName(exporterClassName).getMimeType();
 		}
 		if (content == null) {
 			content = valuesResultSet.getObject(contentColumn);
@@ -552,7 +576,23 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 			column = exportColumnMapping.get(column);
 		}
 
-		byte[] bytes = export(getExporter(), document);
+		DocumentExporter exporter = null;
+		if (hasValue(exporterClassName)) {
+			exporter = getExporterForClassName(exporterClassName);
+		}
+		if (exporter == null && hasValue(mimeType)) {
+			exporter = getExporterForMimeType(mimeType);
+		}
+		ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+		if (exporter != null) {
+			export(outputStream, document, exporter);
+		} else if (hasValue(encoding)) {
+			export(outputStream, document, encoding);
+		} else {
+			export(outputStream, document);
+		}
+
+		byte[] bytes = outputStream.toByteArray();
 
 		if (valuesResultSet.getConcurrency() == ResultSet.CONCUR_UPDATABLE) {
 			valuesResultSet = moveResultSetToRow(valuesStatement, valuesResultSet, row);

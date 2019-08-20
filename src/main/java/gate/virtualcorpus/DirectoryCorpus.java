@@ -11,6 +11,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.log4j.Logger;
 
 import gate.Document;
@@ -38,6 +39,8 @@ public class DirectoryCorpus extends VirtualCorpus {
 	protected List<String> extensions;
 	protected Boolean recursive;
 	protected Boolean hidden;
+	protected String encoding;
+	protected String mimeType;
 
 	private File directory;
 
@@ -80,12 +83,32 @@ public class DirectoryCorpus extends VirtualCorpus {
 		return hidden;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "encoding to read and write document content", defaultValue = "")
+	public final void setEncoding(String encoding) {
+		this.encoding = encoding;
+	}
+
+	public final String getEncoding() {
+		return encoding;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "mimeType to read (and write, if exporterClassName is not set) document content", defaultValue = "")
+	public final void setMimeType(String mimeType) {
+		this.mimeType = mimeType;
+	}
+
+	public final String getMimeType() {
+		return mimeType;
+	}
+
 	private List<File> files = new ArrayList<>();
 
 	@Override
 	public Resource init() throws ResourceInstantiationException {
-		checkValidMimeType();
-		checkValidExporterClassName();
+		checkValidMimeType(mimeType);
+		checkValidExporterClassName(exporterClassName);
 		if (!immutableCorpus) {
 			throw new ResourceInstantiationException("mutable directory corpus currently not supported");
 		}
@@ -189,7 +212,24 @@ public class DirectoryCorpus extends VirtualCorpus {
 		File file = files.get(index);
 
 		try (OutputStream outputStream = new FileOutputStream(file)) {
-			export(getExporter(mimeType), document, outputStream);
+			DocumentExporter exporter = null;
+			if (hasValue(exporterClassName)) {
+				exporter = getExporterForClassName(exporterClassName);
+			}
+			if (exporter == null && hasValue(mimeType)) {
+				exporter = getExporterForMimeType(mimeType);
+			}
+			String extension = FilenameUtils.getExtension(file.getName());
+			if (exporter == null && hasValue(extension)) {
+				exporter = getExporterForExtension(extension);
+			}
+			if (exporter != null) {
+				export(outputStream, document, exporter);
+			} else if (hasValue(encoding)) {
+				export(outputStream, document, encoding);
+			} else {
+				export(outputStream, document);
+			}
 		}
 	}
 

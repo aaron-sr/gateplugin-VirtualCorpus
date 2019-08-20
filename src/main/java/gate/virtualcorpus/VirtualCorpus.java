@@ -72,8 +72,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	protected Boolean readonlyDocuments;
 	protected Boolean immutableCorpus;
-	protected String encoding;
-	protected String mimeType;
+//	protected String encoding;
+//	protected String mimeType;
 	protected Integer cacheDocumentNames;
 	protected String exporterClassName;
 
@@ -95,26 +95,6 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	public final Boolean getImmutableCorpus() {
 		return immutableCorpus;
-	}
-
-	@Optional
-	@CreoleParameter(comment = "encoding to read and write document content", defaultValue = "")
-	public final void setEncoding(String encoding) {
-		this.encoding = encoding;
-	}
-
-	public final String getEncoding() {
-		return encoding;
-	}
-
-	@Optional
-	@CreoleParameter(comment = "mimeType to read (and write, if exporterClassName is not set) document content", defaultValue = "")
-	public final void setMimeType(String mimeType) {
-		this.mimeType = mimeType;
-	}
-
-	public final String getMimeType() {
-		return mimeType;
 	}
 
 	@Optional
@@ -177,7 +157,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		return list;
 	}
 
-	protected final void checkValidMimeType() throws ResourceInstantiationException {
+	protected final static void checkValidMimeType(String mimeType) throws ResourceInstantiationException {
 		if (hasValue(mimeType)) {
 			if (!DocumentFormat.getSupportedMimeTypes().contains(mimeType)) {
 				throw new ResourceInstantiationException(
@@ -186,60 +166,66 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 	}
 
-	protected final void checkValidExporterClassName() throws ResourceInstantiationException {
-		if (!readonlyDocuments) {
-			if (hasValue(exporterClassName)) {
-				try {
-					Class<?> exporterClass = Class.forName(exporterClassName);
-					if (!DocumentExporter.class.isAssignableFrom(exporterClass)) {
-						throw new ResourceInstantiationException(
-								"exporterClassName must be subclass of gate.DocumentExporter");
-					}
-					if (DocumentExporter.getInstance(exporterClassName) == null) {
-						throw new ResourceInstantiationException(
-								"no exporter instance found for class " + exporterClassName);
-					}
-				} catch (Exception e) {
-					throw new ResourceInstantiationException(e);
-				}
-			} else if (hasValue(mimeType)) {
-				if (getExporter(mimeType) == null) {
-					throw new ResourceInstantiationException("no exporter instance found for mime type " + mimeType);
-				}
+	protected final static void checkValidExporterClassName(String exporterClassName)
+			throws ResourceInstantiationException {
+		if (hasValue(exporterClassName)) {
+			Class<?> exporterClass;
+			try {
+				exporterClass = Class.forName(exporterClassName);
+			} catch (ClassNotFoundException e) {
+				throw new ResourceInstantiationException(e);
+			}
+			if (!DocumentExporter.class.isAssignableFrom(exporterClass)) {
+				throw new ResourceInstantiationException("exporterClassName must be subclass of gate.DocumentExporter");
+			}
+			if (DocumentExporter.getInstance(exporterClassName) == null) {
+				throw new ResourceInstantiationException("no exporter instance found for class " + exporterClassName);
 			}
 		}
 	}
 
-	protected DocumentExporter getExporter() {
+	protected final static DocumentExporter getExporterForClassName(String exporterClassName) {
 		if (hasValue(exporterClassName)) {
 			return DocumentExporter.getInstance(exporterClassName);
-		} else if (hasValue(mimeType)) {
-			return getExporter(mimeType);
 		}
 		return null;
 	}
 
-	protected DocumentExporter getExporter(String mimeType) {
+	protected final static DocumentExporter getExporterForMimeType(String mimeType) {
+		List<Resource> exporters;
 		try {
-			for (Resource resource : Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter")) {
-				DocumentExporter exporter = (DocumentExporter) resource;
-				if (exporter.getMimeType().contentEquals(mimeType)) {
-					return exporter;
-				}
-			}
+			exporters = Gate.getCreoleRegister().getAllInstances("gate.DocumentExporter");
 		} catch (GateException e) {
 			throw new GateRuntimeException(e);
 		}
+		for (Resource resource : exporters) {
+			DocumentExporter exporter = (DocumentExporter) resource;
+			if (exporter.getMimeType().contentEquals(mimeType)) {
+				return exporter;
+			}
+		}
 		return null;
 	}
 
-	protected void export(DocumentExporter exporter, Document document, OutputStream outputStream) {
+	protected final static void export(OutputStream outputStream, Document document, DocumentExporter exporter) {
 		try {
-			if (exporter == null) {
-				outputStream.write(document.getContent().toString().getBytes(encoding));
-			} else {
-				exporter.export(document, outputStream);
-			}
+			exporter.export(document, outputStream);
+		} catch (IOException e) {
+			throw new GateRuntimeException(e);
+		}
+	}
+
+	protected final static void export(OutputStream outputStream, Document document) {
+		try {
+			outputStream.write(document.getContent().toString().getBytes());
+		} catch (IOException e) {
+			throw new GateRuntimeException(e);
+		}
+	}
+
+	protected final static void export(OutputStream outputStream, Document document, String encoding) {
+		try {
+			outputStream.write(document.getContent().toString().getBytes(encoding));
 		} catch (IOException e) {
 			throw new GateRuntimeException(e);
 		}
@@ -247,7 +233,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	protected byte[] export(DocumentExporter exporter, Document document) {
 		try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-			export(exporter, document, baos);
+			export(baos, document, exporter);
 			return baos.toByteArray();
 		} catch (IOException e) {
 			throw new GateRuntimeException(e);

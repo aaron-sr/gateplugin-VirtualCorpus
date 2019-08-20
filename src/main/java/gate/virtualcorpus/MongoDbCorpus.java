@@ -1,5 +1,6 @@
 package gate.virtualcorpus;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -28,6 +29,7 @@ import com.mongodb.client.model.Updates;
 
 import gate.Corpus;
 import gate.Document;
+import gate.DocumentExporter;
 import gate.Factory;
 import gate.FeatureMap;
 import gate.GateConstants;
@@ -60,6 +62,8 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	protected String exportEncoding;
 	protected Integer batchSize;
 	protected Boolean cacheIds;
+	protected String encoding;
+	protected String mimeType;
 
 	private List<String> nameKeyList;
 	private List<String> contentKeyList;
@@ -209,10 +213,30 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		return cacheIds;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "encoding to read and write document content", defaultValue = "")
+	public final void setEncoding(String encoding) {
+		this.encoding = encoding;
+	}
+
+	public final String getEncoding() {
+		return encoding;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "mimeType to read (and write, if exporterClassName is not set) document content", defaultValue = "")
+	public final void setMimeType(String mimeType) {
+		this.mimeType = mimeType;
+	}
+
+	public final String getMimeType() {
+		return mimeType;
+	}
+
 	@Override
 	public Resource init() throws ResourceInstantiationException {
-		checkValidMimeType();
-		checkValidExporterClassName();
+		checkValidMimeType(mimeType);
+		checkValidExporterClassName(exporterClassName);
 		if (!hasValue(host)) {
 			throw new ResourceInstantiationException("host must not be empty");
 		}
@@ -338,7 +362,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 			String exportKey = exportKeyMapping.get(contentKey);
 			content = mongoDbDocument.get(exportKey);
 			encoding = exportEncoding;
-			mimeType = getExporter().getMimeType();
+			mimeType = getExporterForClassName(exporterClassName).getMimeType();
 		}
 		if (content == null) {
 			content = mongoDbDocument.get(contentKey);
@@ -385,7 +409,24 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 		if (hasValue(exportKeySuffix)) {
 			contentKey = exportKeyMapping.get(contentKey);
 		}
-		byte[] bytes = export(getExporter(), document);
+
+		DocumentExporter exporter = null;
+		if (hasValue(exporterClassName)) {
+			exporter = getExporterForClassName(exporterClassName);
+		}
+		if (exporter == null && hasValue(mimeType)) {
+			exporter = getExporterForMimeType(mimeType);
+		}
+		ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+		if (exporter != null) {
+			export(outputStream, document, exporter);
+		} else if (hasValue(encoding)) {
+			export(outputStream, document, encoding);
+		} else {
+			export(outputStream, document);
+		}
+
+		byte[] bytes = outputStream.toByteArray();
 
 		String id = getId(documentIndex);
 
