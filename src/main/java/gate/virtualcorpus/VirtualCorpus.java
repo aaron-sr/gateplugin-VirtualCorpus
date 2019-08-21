@@ -72,8 +72,6 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	protected Boolean readonlyDocuments;
 	protected Boolean immutableCorpus;
-//	protected String encoding;
-//	protected String mimeType;
 	protected Integer cacheDocumentNames;
 	protected String exporterClassName;
 
@@ -928,12 +926,12 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	@Override
 	public final Object[] toArray() {
 		checkLoaded();
-		List<Document> documents = new ArrayList<>();
+		Object[] array = new Object[size()];
 		for (int i = 0; i < size(); i++) {
 			Document document = get(i);
-			documents.add(document);
+			array[i] = document;
 		}
-		return documents.toArray();
+		return array;
 	}
 
 	@Override
