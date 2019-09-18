@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
+import java.io.ObjectStreamClass;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -12,6 +13,7 @@ import org.apache.log4j.Logger;
 
 import gate.Annotation;
 import gate.Document;
+import gate.Gate;
 import gate.Resource;
 import gate.TextualDocument;
 import gate.corpora.DocumentContentImpl;
@@ -51,15 +53,35 @@ public class SerializationFormat extends TextualDocumentFormat {
 			InputStream bytes = openContentInputStream(document);
 			if (bytes.available() > 0) {
 				Document readDocument;
-				try (ObjectInputStream objectInputStream = new ObjectInputStream(bytes)) {
+				try (ObjectInputStream objectInputStream = new GateObjectInputStream(bytes)) {
 					readDocument = (Document) objectInputStream.readObject();
 				}
+				bytes.close();
+
 				validateEmptyDocument(document);
 				copyDocumentValues(readDocument, document);
+			} else {
+				bytes.close();
 			}
 		} catch (Exception e) {
 			throw new DocumentFormatException(e);
 		}
+	}
+
+	private static class GateObjectInputStream extends ObjectInputStream {
+
+		public GateObjectInputStream(InputStream in) throws IOException {
+			super(in);
+		}
+
+		@Override
+		protected Class<?> resolveClass(ObjectStreamClass desc) throws ClassNotFoundException, IOException {
+			try {
+				return Class.forName(desc.getName(), false, Gate.getClassLoader());
+			} catch (Exception e) {
+				return super.resolveClass(desc);
+			}
+		};
 	}
 
 	protected InputStream openContentInputStream(Document document) throws UnsupportedEncodingException, IOException {
