@@ -138,7 +138,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		if (hasValue(exporterClassName)) {
 			Class<?> exporterClass;
 			try {
-				exporterClass = Class.forName(exporterClassName);
+				exporterClass = Gate.getClassLoader().loadClass(exporterClassName);
 			} catch (ClassNotFoundException e) {
 				throw new ResourceInstantiationException(e);
 			}
