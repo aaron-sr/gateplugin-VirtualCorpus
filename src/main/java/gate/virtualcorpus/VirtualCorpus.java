@@ -534,16 +534,12 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			return;
 		}
 		if (this.contains(document)) {
-			try {
-				boolean changed = hasDocumentChanged(document);
-
-				if (!readonlyDocuments && !unloaded) {
-					if (changed) {
-						saveDocument(document);
-					}
+			if (!readonlyDocuments && hasDocumentChanged(document)) {
+				try {
+					saveDocument(document);
+				} catch (Exception e) {
+					throw new GateRuntimeException("cannot update document " + document, e);
 				}
-			} catch (Exception e) {
-				throw new GateRuntimeException("cannot update document " + document, e);
 			}
 			int index = this.indexOf(document);
 			loadedDocuments.remove(index);
