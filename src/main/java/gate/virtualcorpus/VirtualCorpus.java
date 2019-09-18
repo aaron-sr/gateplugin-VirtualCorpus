@@ -70,30 +70,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 	}
 
-	protected Boolean readonlyDocuments;
-	protected Boolean immutableCorpus;
+	protected Boolean readonlyDocuments = true;
+	protected Boolean immutableCorpus = true;
 	protected Integer cacheDocumentNames;
-	protected String exporterClassName;
-
-	@Optional
-	@CreoleParameter(comment = "If true, changes to content, annotation and feature of documents will not be saved and document names cannot be renamed", defaultValue = "true")
-	public final void setReadonlyDocuments(Boolean readonlyDocuments) {
-		this.readonlyDocuments = readonlyDocuments;
-	}
-
-	public final Boolean getReadonlyDocuments() {
-		return this.readonlyDocuments;
-	}
-
-	@Optional
-	@CreoleParameter(comment = "If true, documents cannot be added or removed to the corpus", defaultValue = "true")
-	public final void setImmutableCorpus(Boolean immutableCorpus) {
-		this.immutableCorpus = immutableCorpus;
-	}
-
-	public final Boolean getImmutableCorpus() {
-		return immutableCorpus;
-	}
 
 	@Optional
 	@CreoleParameter(comment = "cache n last document names", defaultValue = "100000")
@@ -103,16 +82,6 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	public Integer getCacheDocumentNames() {
 		return cacheDocumentNames;
-	}
-
-	@Optional
-	@CreoleParameter(comment = "full class name of the exporter to write documents (if not set, mimeType is used to determine gate.DocumentExporter)", defaultValue = "")
-	public final void setExporterClassName(String exporterClassName) {
-		this.exporterClassName = exporterClassName;
-	}
-
-	public final String getExporterClassName() {
-		return exporterClassName;
 	}
 
 	private VirtualCorpusCreoleListener creoleListener;

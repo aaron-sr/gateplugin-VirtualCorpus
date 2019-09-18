@@ -61,6 +61,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	protected String contentKeyFeatureName;
 	protected String featureKeyPrefix;
 	protected String exportKeySuffix;
+	protected String exporterClassName;
 	protected String exportEncoding;
 	protected Integer batchSize;
 	protected Boolean cacheIds;
@@ -186,6 +187,16 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Optional
+	@CreoleParameter(comment = "full class name of the exporter to write documents (if not set, mimeType is used to determine gate.DocumentExporter)", defaultValue = "")
+	public final void setExporterClassName(String exporterClassName) {
+		this.exporterClassName = exporterClassName;
+	}
+
+	public final String getExporterClassName() {
+		return exporterClassName;
+	}
+
+	@Optional
 	@CreoleParameter(comment = "encoding for value keys, which were exported (in case of reopen document)", defaultValue = "")
 	public void setExportEncoding(String exportEncoding) {
 		this.exportEncoding = exportEncoding;
@@ -233,6 +244,16 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 
 	public final String getMimeType() {
 		return mimeType;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "If true, changes to content, annotation and feature of documents will not be saved and document names cannot be renamed", defaultValue = "true")
+	public final void setReadonlyDocuments(Boolean readonlyDocuments) {
+		this.readonlyDocuments = readonlyDocuments;
+	}
+
+	public final Boolean getReadonlyDocuments() {
+		return this.readonlyDocuments;
 	}
 
 	@Override

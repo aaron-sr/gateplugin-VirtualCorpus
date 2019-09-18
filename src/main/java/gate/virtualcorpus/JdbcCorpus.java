@@ -72,6 +72,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	protected String contentColumnFeatureName;
 	protected String featureKeyPrefix;
 	protected String exportColumnSuffix;
+	protected String exporterClassName;
 	protected String exportEncoding;
 	protected Integer maxRowsSelected;
 	protected Boolean autoCommit;
@@ -228,6 +229,16 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Optional
+	@CreoleParameter(comment = "full class name of the exporter to write documents (if not set, mimeType is used to determine gate.DocumentExporter)", defaultValue = "")
+	public final void setExporterClassName(String exporterClassName) {
+		this.exporterClassName = exporterClassName;
+	}
+
+	public final String getExporterClassName() {
+		return exporterClassName;
+	}
+
+	@Optional
 	@CreoleParameter(comment = "encoding for value columns, which were exported (in case of reopen document)", defaultValue = "")
 	public void setExportEncoding(String exportEncoding) {
 		this.exportEncoding = exportEncoding;
@@ -335,6 +346,16 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 
 	public final String getMimeType() {
 		return mimeType;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "If true, changes to content, annotation and feature of documents will not be saved and document names cannot be renamed", defaultValue = "true")
+	public final void setReadonlyDocuments(Boolean readonlyDocuments) {
+		this.readonlyDocuments = readonlyDocuments;
+	}
+
+	public final Boolean getReadonlyDocuments() {
+		return this.readonlyDocuments;
 	}
 
 	@Override
