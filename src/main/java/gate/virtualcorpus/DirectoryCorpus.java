@@ -224,7 +224,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 	}
 
 	@Override
-	protected Integer addDocuments(int index, Collection<? extends Document> documents) throws Exception {
+	protected void addDocuments(int index, Collection<? extends Document> documents) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 
@@ -255,7 +255,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 	}
 
 	@Override
-	protected Integer deleteDocuments(Collection<? extends Document> documents) throws Exception {
+	protected void deleteDocuments(Collection<? extends Document> documents) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 

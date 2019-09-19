@@ -27,7 +27,6 @@ import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
 
-import gate.Corpus;
 import gate.Document;
 import gate.DocumentExporter;
 import gate.Factory;
@@ -42,7 +41,7 @@ import gate.creole.metadata.Optional;
 import gate.util.GateRuntimeException;
 
 @CreoleResource(name = "MongoDbCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by GATE documents stored in a MongoDB")
-public class MongoDbCorpus extends VirtualCorpus implements Corpus {
+public class MongoDbCorpus extends VirtualCorpus {
 	private static final long serialVersionUID = -4207705811952799973L;
 	private static Logger logger = Logger.getLogger(MongoDbCorpus.class);
 
@@ -427,7 +426,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Override
-	protected Integer addDocuments(int index, Collection<? extends Document> documents) throws Exception {
+	protected void addDocuments(int index, Collection<? extends Document> documents) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 
@@ -464,7 +463,7 @@ public class MongoDbCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Override
-	protected Integer deleteDocuments(Collection<? extends Document> documents) throws Exception {
+	protected void deleteDocuments(Collection<? extends Document> documents) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 

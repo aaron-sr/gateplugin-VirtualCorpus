@@ -19,7 +19,6 @@ import java.util.regex.Pattern;
 
 import org.apache.log4j.Logger;
 
-import gate.Corpus;
 import gate.Document;
 import gate.DocumentExporter;
 import gate.Factory;
@@ -48,7 +47,7 @@ import gate.util.GateRuntimeException;
  */
 
 @CreoleResource(name = "JdbcCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by GATE documents stored in a JDBC table")
-public class JdbcCorpus extends VirtualCorpus implements Corpus {
+public class JdbcCorpus extends VirtualCorpus {
 	private static final long serialVersionUID = -8485133333415382902L;
 	private static Logger logger = Logger.getLogger(JdbcCorpus.class);
 
@@ -612,7 +611,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Override
-	protected Integer addDocuments(int index, Collection<? extends Document> documents) throws Exception {
+	protected void addDocuments(int index, Collection<? extends Document> documents) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 
@@ -671,7 +670,7 @@ public class JdbcCorpus extends VirtualCorpus implements Corpus {
 	}
 
 	@Override
-	protected Integer deleteDocuments(Collection<? extends Document> documents) throws Exception {
+	protected void deleteDocuments(Collection<? extends Document> documents) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 

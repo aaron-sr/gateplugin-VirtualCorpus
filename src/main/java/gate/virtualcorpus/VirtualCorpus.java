@@ -448,7 +448,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	 * @param documents to add
 	 * @return the amount of documents added
 	 */
-	protected abstract Integer addDocuments(int index, Collection<? extends Document> documents) throws Exception;
+	protected abstract void addDocuments(int index, Collection<? extends Document> documents) throws Exception;
 
 	protected abstract void setDocument(int index, Document document) throws Exception;
 
@@ -458,7 +458,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		setDocument(index, document);
 	}
 
-	protected abstract Integer deleteDocuments(Collection<? extends Document> documents) throws Exception;
+	protected abstract void deleteDocuments(Collection<? extends Document> documents) throws Exception;
 
 	protected abstract void deleteAllDocuments() throws Exception;
 
