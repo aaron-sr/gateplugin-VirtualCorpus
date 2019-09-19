@@ -674,7 +674,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	public final boolean addAll(int index, Collection<? extends Document> documents) {
 		checkMutable();
 		checkLoaded();
-		checkIndex(index);
+		checkIndexAdd(index);
 		if (documents.isEmpty()) {
 			return false;
 		}
@@ -693,6 +693,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 		for (Document document : documents) {
 			fireDocumentAdded(index++, document);
+			documentChangeObservers.put(document, new DocumentChangeObserver(document));
 		}
 		return true;
 	}
@@ -775,6 +776,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 				removeFromIndexMap(loadedDocumentNames, index);
 				Document oldDocument = removeFromIndexMap(loadedDocuments, index);
 				fireDocumentRemoved(index, oldDocument);
+				documentChangeObservers.remove(document).unregisterDocument();
 			}
 		}
 		size -= removeDocuments.size();
@@ -806,6 +808,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 				removeFromIndexMap(loadedDocumentNames, index);
 				Document oldDocument = removeFromIndexMap(loadedDocuments, index);
 				fireDocumentRemoved(index, oldDocument);
+				documentChangeObservers.remove(document).unregisterDocument();
 			}
 		}
 		size -= removeDocuments.size();
@@ -832,7 +835,10 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		loadedDocumentNames.clear();
 
 		for (Entry<Integer, Document> entry : reversed.entrySet()) {
-			fireDocumentRemoved(entry.getKey(), entry.getValue());
+			Integer index = entry.getKey();
+			Document document = entry.getValue();
+			fireDocumentRemoved(index, document);
+			documentChangeObservers.remove(document).unregisterDocument();
 		}
 		size = 0;
 		modCount++;
@@ -878,6 +884,12 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	private void checkIndex(int index) {
 		if (index < 0 || index >= size()) {
+			throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + size());
+		}
+	}
+
+	private void checkIndexAdd(int index) {
+		if (index < 0 || index > size()) {
 			throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + size());
 		}
 	}
