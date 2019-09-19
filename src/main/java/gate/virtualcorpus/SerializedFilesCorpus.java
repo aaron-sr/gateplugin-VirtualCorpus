@@ -103,7 +103,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	@Override
 	protected int loadSize() throws Exception {
 		try (Stream<Path> stream = Files.list(Paths.get(directoryURL.toURI()))
-				.filter(p -> p.getFileName().endsWith(FILE_EXTENSION))) {
+				.filter(p -> p.getFileName().toString().endsWith(FILE_EXTENSION))) {
 			return (int) stream.count();
 		}
 	}
