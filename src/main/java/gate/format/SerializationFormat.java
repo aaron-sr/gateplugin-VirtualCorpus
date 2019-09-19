@@ -4,25 +4,21 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
-import java.io.ObjectStreamClass;
 import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
-import java.util.Collection;
 
 import org.apache.log4j.Logger;
 
-import gate.Annotation;
 import gate.Document;
-import gate.Gate;
 import gate.Resource;
 import gate.TextualDocument;
-import gate.corpora.DocumentContentImpl;
 import gate.corpora.MimeType;
 import gate.corpora.RepositioningInfo;
 import gate.corpora.TextualDocumentFormat;
 import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.AutoInstance;
 import gate.creole.metadata.CreoleResource;
+import gate.serialization.DocumentUtil;
+import gate.serialization.GateObjectInputStream;
 import gate.util.DocumentFormatException;
 
 @CreoleResource(name = "Serialization Format", isPrivate = true, autoinstances = { @AutoInstance(hidden = true) })
@@ -58,30 +54,14 @@ public class SerializationFormat extends TextualDocumentFormat {
 				}
 				bytes.close();
 
-				validateEmptyDocument(document);
-				copyDocumentValues(readDocument, document);
+				DocumentUtil.validateEmptyDocument(document);
+				DocumentUtil.copyDocumentValues(readDocument, document);
 			} else {
 				bytes.close();
 			}
 		} catch (Exception e) {
 			throw new DocumentFormatException(e);
 		}
-	}
-
-	private static class GateObjectInputStream extends ObjectInputStream {
-
-		public GateObjectInputStream(InputStream in) throws IOException {
-			super(in);
-		}
-
-		@Override
-		protected Class<?> resolveClass(ObjectStreamClass desc) throws ClassNotFoundException, IOException {
-			try {
-				return Class.forName(desc.getName(), false, Gate.getClassLoader());
-			} catch (Exception e) {
-				return super.resolveClass(desc);
-			}
-		};
 	}
 
 	protected InputStream openContentInputStream(Document document) throws UnsupportedEncodingException, IOException {
@@ -92,65 +72,6 @@ public class SerializationFormat extends TextualDocumentFormat {
 			bytes = document.getContent().toString().getBytes();
 		}
 		return new ByteArrayInputStream(bytes);
-	}
-
-	protected static void validateEmptyDocument(Document document) throws DocumentFormatException {
-		if (!document.getAnnotations().isEmpty()) {
-			throw new DocumentFormatException("document has already annotations in default annotation set");
-		}
-		if (!document.getAnnotations().getRelations().isEmpty()) {
-			throw new DocumentFormatException("document has already relations in default annotation set");
-		}
-		Collection<String> annotationSetNames = new ArrayList<>();
-		Collection<String> relationSetNames = new ArrayList<>();
-		for (String annotationSetName : document.getAnnotationSetNames()) {
-			if (annotationSetName.length() == 0) {
-				continue;
-			}
-			if (!document.getAnnotations(annotationSetName).isEmpty()) {
-				annotationSetNames.add(annotationSetName);
-			}
-			if (!document.getAnnotations(annotationSetName).getRelations().isEmpty()) {
-				relationSetNames.add(annotationSetName);
-			}
-		}
-		if (!annotationSetNames.isEmpty() && !relationSetNames.isEmpty()) {
-			throw new DocumentFormatException("document has already annotations in " + annotationSetNames
-					+ " and relations in " + relationSetNames);
-		} else if (!annotationSetNames.isEmpty()) {
-			throw new DocumentFormatException("document has already annotations in " + annotationSetNames);
-		} else if (!relationSetNames.isEmpty()) {
-			throw new DocumentFormatException("document has already relations in " + relationSetNames);
-		}
-	}
-
-	protected static final void copyDocumentValues(Document fromDocument, Document toDocument) {
-		toDocument.setContent(new DocumentContentImpl(fromDocument.getContent().toString()));
-		if (!fromDocument.getAnnotations().isEmpty()) {
-			for (Annotation annotation : fromDocument.getAnnotations()) {
-				toDocument.getAnnotations().add(annotation);
-			}
-		}
-		if (!fromDocument.getAnnotations().getRelations().isEmpty()) {
-			toDocument.getAnnotations().getRelations().addAll(fromDocument.getAnnotations().getRelations());
-		}
-		for (String annotationSetName : fromDocument.getAnnotationSetNames()) {
-			if (annotationSetName.length() == 0) {
-				continue;
-			}
-			if (!fromDocument.getAnnotations(annotationSetName).isEmpty()) {
-				for (Annotation annotation : fromDocument.getAnnotations(annotationSetName)) {
-					toDocument.getAnnotations(annotationSetName).add(annotation);
-				}
-			}
-			if (!fromDocument.getAnnotations(annotationSetName).getRelations().isEmpty()) {
-				toDocument.getAnnotations(annotationSetName).getRelations()
-						.addAll(fromDocument.getAnnotations(annotationSetName).getRelations());
-			}
-		}
-		if (!fromDocument.getFeatures().isEmpty()) {
-			toDocument.getFeatures().putAll(fromDocument.getFeatures());
-		}
 	}
 
 }
