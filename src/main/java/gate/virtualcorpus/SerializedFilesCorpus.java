@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamClass;
 import java.io.OutputStream;
 import java.net.URL;
 import java.nio.file.Files;
@@ -21,6 +22,7 @@ import java.util.zip.DeflaterOutputStream;
 import org.apache.log4j.Logger;
 
 import gate.Document;
+import gate.Gate;
 import gate.Resource;
 import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
@@ -69,7 +71,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	}
 
 	@Optional
-	@CreoleParameter(comment = "If true, document files will be compressed via deflate", defaultValue = "true")
+	@CreoleParameter(comment = "If true, document files will be compressed via deflate", defaultValue = "false")
 	public void setCompressedFiles(Boolean compressedFiles) {
 		this.compressedFiles = compressedFiles;
 	}
@@ -117,7 +119,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	@Override
 	protected Document loadDocument(int index) throws Exception {
-		try (ObjectInputStream inputStream = new ObjectInputStream(openInputStream(index))) {
+		try (ObjectInputStream inputStream = new GateObjectInputStream(openInputStream(index))) {
 			return (Document) inputStream.readObject();
 		}
 	}
@@ -191,6 +193,22 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	private File getFile(int index) {
 		return new File(directory, index + FILE_EXTENSION);
+	}
+
+	private static class GateObjectInputStream extends ObjectInputStream {
+
+		public GateObjectInputStream(InputStream in) throws IOException {
+			super(in);
+		}
+
+		@Override
+		protected Class<?> resolveClass(ObjectStreamClass desc) throws ClassNotFoundException, IOException {
+			try {
+				return Class.forName(desc.getName(), false, Gate.getClassLoader());
+			} catch (Exception e) {
+				return super.resolveClass(desc);
+			}
+		};
 	}
 
 }
