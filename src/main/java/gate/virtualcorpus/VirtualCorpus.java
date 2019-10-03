@@ -471,7 +471,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		checkIndex(index);
 		if (cacheDocumentNames != null && cacheDocumentNames > 0) {
 			if (loadedDocumentNames.containsKey(index)) {
-				throw new IllegalArgumentException("document name index already loaded: " + index);
+				if (!documentName.contentEquals(this.getDocumentName(index))) {
+					throw new IllegalArgumentException("document name already loaded" + index + " and different");
+				}
 			}
 			loadedDocumentNames.put(index, documentName);
 			updateLruDocumentNameIndex(index);
