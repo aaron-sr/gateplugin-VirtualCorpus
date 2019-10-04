@@ -257,8 +257,8 @@ public class MongoDbCorpus extends VirtualCorpus {
 
 	@Override
 	public Resource init() throws ResourceInstantiationException {
-		checkValidMimeType(mimeType);
-		checkValidExporterClassName(exporterClassName);
+		checkValidMimeType(mimeType, false);
+		checkValidExporterClassName(exporterClassName, false);
 		if (!hasValue(host)) {
 			throw new ResourceInstantiationException("host must not be empty");
 		}

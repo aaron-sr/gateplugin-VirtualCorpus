@@ -359,8 +359,8 @@ public class JdbcCorpus extends VirtualCorpus {
 
 	@Override
 	public Resource init() throws ResourceInstantiationException {
-		checkValidMimeType(mimeType);
-		checkValidExporterClassName(exporterClassName);
+		checkValidMimeType(mimeType, false);
+		checkValidExporterClassName(exporterClassName, false);
 		if (!immutableCorpus) {
 			throw new ResourceInstantiationException("mutable jdbc corpus currently not supported");
 		}

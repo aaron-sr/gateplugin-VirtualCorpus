@@ -124,7 +124,11 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		return list;
 	}
 
-	protected final static void checkValidMimeType(String mimeType) throws ResourceInstantiationException {
+	protected final static void checkValidMimeType(String mimeType, boolean required)
+			throws ResourceInstantiationException {
+		if (required && !hasValue(mimeType)) {
+			throw new ResourceInstantiationException("no mimeType provided");
+		}
 		if (hasValue(mimeType)) {
 			if (!DocumentFormat.getSupportedMimeTypes().contains(mimeType)) {
 				throw new ResourceInstantiationException(
@@ -133,8 +137,11 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 	}
 
-	protected final static void checkValidExporterClassName(String exporterClassName)
+	protected final static void checkValidExporterClassName(String exporterClassName, boolean required)
 			throws ResourceInstantiationException {
+		if (required && !hasValue(exporterClassName)) {
+			throw new ResourceInstantiationException("no exporterClassName provided");
+		}
 		if (hasValue(exporterClassName)) {
 			Class<?> exporterClass;
 			try {

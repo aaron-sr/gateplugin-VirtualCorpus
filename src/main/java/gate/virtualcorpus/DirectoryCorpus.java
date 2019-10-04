@@ -128,8 +128,8 @@ public class DirectoryCorpus extends VirtualCorpus {
 
 	@Override
 	public Resource init() throws ResourceInstantiationException {
-		checkValidMimeType(mimeType);
-		checkValidExporterClassName(exporterClassName);
+		checkValidMimeType(mimeType, false);
+		checkValidExporterClassName(exporterClassName, false);
 		if (!immutableCorpus) {
 			throw new ResourceInstantiationException("mutable directory corpus currently not supported");
 		}
