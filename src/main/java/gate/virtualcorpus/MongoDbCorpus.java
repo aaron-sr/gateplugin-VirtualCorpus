@@ -227,32 +227,34 @@ public class MongoDbCorpus extends VirtualCorpus {
 
 	@Optional
 	@CreoleParameter(comment = "encoding to read and write document content", defaultValue = "")
-	public final void setEncoding(String encoding) {
+	public void setEncoding(String encoding) {
 		this.encoding = encoding;
 	}
 
-	public final String getEncoding() {
+	public String getEncoding() {
 		return encoding;
 	}
 
 	@Optional
 	@CreoleParameter(comment = "mimeType to read (and write, if exporterClassName is not set) document content", defaultValue = "")
-	public final void setMimeType(String mimeType) {
+	public void setMimeType(String mimeType) {
 		this.mimeType = mimeType;
 	}
 
-	public final String getMimeType() {
+	public String getMimeType() {
 		return mimeType;
 	}
 
+	@Override
 	@Optional
 	@CreoleParameter(comment = "If true, changes to content, annotation and feature of documents will not be saved and document names cannot be renamed", defaultValue = "true")
-	public final void setReadonlyDocuments(Boolean readonlyDocuments) {
-		this.readonlyDocuments = readonlyDocuments;
+	public void setReadonlyDocuments(Boolean readonlyDocuments) {
+		super.setReadonlyDocuments(readonlyDocuments);
 	}
 
-	public final Boolean getReadonlyDocuments() {
-		return this.readonlyDocuments;
+	@Override
+	public Boolean getReadonlyDocuments() {
+		return super.getReadonlyDocuments();
 	}
 
 	@Override

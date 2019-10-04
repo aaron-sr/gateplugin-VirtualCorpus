@@ -70,9 +70,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 	}
 
-	protected Boolean readonlyDocuments = true;
-	protected Boolean immutableCorpus = true;
-	protected Integer cacheDocumentNames;
+	private Boolean readonlyDocuments = true;
+	private Boolean immutableCorpus = true;
+	private Integer cacheDocumentNames;
 
 	@Optional
 	@CreoleParameter(comment = "cache n last document names", defaultValue = "100000")
@@ -85,7 +85,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	private VirtualCorpusCreoleListener creoleListener;
-	private boolean unloaded = false;
+	private boolean loaded = false;
 
 	private Integer size;
 	private transient int modCount = 0;
@@ -97,10 +97,25 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	protected final void initVirtualCorpus() {
 		creoleListener = new VirtualCorpusCreoleListener(this);
 		Gate.getCreoleRegister().addCreoleListener(creoleListener);
+		loaded = true;
 	}
 
-	protected final void cleanupVirtualCorpus() {
-		Gate.getCreoleRegister().removeCreoleListener(creoleListener);
+	protected Boolean getReadonlyDocuments() {
+		return readonlyDocuments;
+	}
+
+	protected void setReadonlyDocuments(Boolean readonlyDocuments) {
+		checkUnloaded();
+		this.readonlyDocuments = readonlyDocuments;
+	}
+
+	protected Boolean getImmutableCorpus() {
+		return immutableCorpus;
+	}
+
+	protected void setImmutableCorpus(Boolean immutableCorpus) {
+		checkUnloaded();
+		this.immutableCorpus = immutableCorpus;
 	}
 
 	protected final static boolean hasValue(String string) {
@@ -427,7 +442,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	private final void unload() {
-		unloaded = true;
+		loaded = false;
 	}
 
 	/**
@@ -880,8 +895,14 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	private void checkLoaded() {
-		if (unloaded) {
+		if (!loaded) {
 			throw new IllegalStateException("corpus is unloaded");
+		}
+	}
+
+	private void checkUnloaded() {
+		if (loaded) {
+			throw new IllegalStateException("corpus is loaded");
 		}
 	}
 

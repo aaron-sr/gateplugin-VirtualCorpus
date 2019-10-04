@@ -329,41 +329,40 @@ public class JdbcCorpus extends VirtualCorpus {
 
 	@Optional
 	@CreoleParameter(comment = "encoding to read and write document content", defaultValue = "")
-	public final void setEncoding(String encoding) {
+	public void setEncoding(String encoding) {
 		this.encoding = encoding;
 	}
 
-	public final String getEncoding() {
+	public String getEncoding() {
 		return encoding;
 	}
 
 	@Optional
 	@CreoleParameter(comment = "mimeType to read (and write, if exporterClassName is not set) document content", defaultValue = "")
-	public final void setMimeType(String mimeType) {
+	public void setMimeType(String mimeType) {
 		this.mimeType = mimeType;
 	}
 
-	public final String getMimeType() {
+	public String getMimeType() {
 		return mimeType;
 	}
 
+	@Override
 	@Optional
 	@CreoleParameter(comment = "If true, changes to content, annotation and feature of documents will not be saved and document names cannot be renamed", defaultValue = "true")
-	public final void setReadonlyDocuments(Boolean readonlyDocuments) {
-		this.readonlyDocuments = readonlyDocuments;
+	public void setReadonlyDocuments(Boolean readonlyDocuments) {
+		super.setReadonlyDocuments(readonlyDocuments);
 	}
 
-	public final Boolean getReadonlyDocuments() {
-		return this.readonlyDocuments;
+	@Override
+	public Boolean getReadonlyDocuments() {
+		return super.getReadonlyDocuments();
 	}
 
 	@Override
 	public Resource init() throws ResourceInstantiationException {
 		checkValidMimeType(mimeType, false);
 		checkValidExporterClassName(exporterClassName, false);
-		if (!immutableCorpus) {
-			throw new ResourceInstantiationException("mutable jdbc corpus currently not supported");
-		}
 		if (!hasValue(tableName)) {
 			throw new ResourceInstantiationException("tableName must not be empty");
 		}
@@ -456,7 +455,7 @@ public class JdbcCorpus extends VirtualCorpus {
 			featureColumns.removeAll(allTableColumns);
 			throw new ResourceInstantiationException("feature columns does not exist: " + featureColumns);
 		}
-		if (!readonlyDocuments && hasValue(exportColumnSuffix)
+		if (!getReadonlyDocuments() && hasValue(exportColumnSuffix)
 				&& !allTableColumns.containsAll(exportColumnMapping.values())) {
 			List<String> exportColumns = new ArrayList<String>(exportColumnMapping.values());
 			exportColumns.removeAll(allTableColumns);
@@ -484,7 +483,7 @@ public class JdbcCorpus extends VirtualCorpus {
 					ResultSet.CONCUR_READ_ONLY);
 			valuesStatement = connection.prepareStatement(prepareQuery(SELECT_VALUES_SQL), resultSetType,
 					resultSetConcurrency);
-			if (!readonlyDocuments && valuesStatement.getResultSetConcurrency() != ResultSet.CONCUR_UPDATABLE) {
+			if (!getReadonlyDocuments() && valuesStatement.getResultSetConcurrency() != ResultSet.CONCUR_UPDATABLE) {
 				if (hasValue(exportColumnSuffix)) {
 					updateStatements = prepareStatements(UPDATE_VALUES_SQL, contentColumns, exportColumnSuffix);
 				} else {
@@ -512,7 +511,7 @@ public class JdbcCorpus extends VirtualCorpus {
 	@Override
 	public void cleanup() {
 		try {
-			if (!readonlyDocuments && valuesResultSet.getConcurrency() == ResultSet.CONCUR_UPDATABLE) {
+			if (!getReadonlyDocuments() && valuesResultSet.getConcurrency() == ResultSet.CONCUR_UPDATABLE) {
 				valuesResultSet.updateRow();
 			}
 			if (connection != null && !connection.isClosed()) {
@@ -524,7 +523,6 @@ public class JdbcCorpus extends VirtualCorpus {
 		} catch (SQLException e) {
 			throw new GateRuntimeException(e);
 		}
-		cleanupVirtualCorpus();
 	}
 
 	@Override

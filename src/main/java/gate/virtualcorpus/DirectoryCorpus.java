@@ -114,14 +114,16 @@ public class DirectoryCorpus extends VirtualCorpus {
 		return exporterClassName;
 	}
 
+	@Override
 	@Optional
 	@CreoleParameter(comment = "If true, changes to content, annotation and feature of documents will not be saved and document names cannot be renamed", defaultValue = "true")
-	public final void setReadonlyDocuments(Boolean readonlyDocuments) {
-		this.readonlyDocuments = readonlyDocuments;
+	public void setReadonlyDocuments(Boolean readonlyDocuments) {
+		super.setReadonlyDocuments(readonlyDocuments);
 	}
 
-	public final Boolean getReadonlyDocuments() {
-		return this.readonlyDocuments;
+	@Override
+	public Boolean getReadonlyDocuments() {
+		return super.getReadonlyDocuments();
 	}
 
 	private List<File> files = new ArrayList<>();

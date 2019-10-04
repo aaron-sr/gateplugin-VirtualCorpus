@@ -52,24 +52,28 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 		return directoryURL;
 	}
 
+	@Override
 	@Optional
 	@CreoleParameter(comment = "If true, documents cannot be added or removed to the corpus", defaultValue = "true")
 	public void setImmutableCorpus(Boolean immutableCorpus) {
-		this.immutableCorpus = immutableCorpus;
+		super.setImmutableCorpus(immutableCorpus);
 	}
 
+	@Override
 	public Boolean getImmutableCorpus() {
-		return immutableCorpus;
+		return super.getImmutableCorpus();
 	}
 
+	@Override
 	@Optional
 	@CreoleParameter(comment = "If true, changes to content, annotation and feature of documents will not be saved and document names cannot be renamed", defaultValue = "true")
 	public final void setReadonlyDocuments(Boolean readonlyDocuments) {
-		this.readonlyDocuments = readonlyDocuments;
+		super.setReadonlyDocuments(readonlyDocuments);
 	}
 
+	@Override
 	public final Boolean getReadonlyDocuments() {
-		return this.readonlyDocuments;
+		return super.getReadonlyDocuments();
 	}
 
 	@Optional
