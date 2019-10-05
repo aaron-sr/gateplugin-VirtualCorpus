@@ -132,7 +132,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 	public Resource init() throws ResourceInstantiationException {
 		checkValidMimeType(mimeType, false);
 		checkValidExporterClassName(exporterClassName, false);
-		if (!immutableCorpus) {
+		if (!getImmutableCorpus()) {
 			throw new ResourceInstantiationException("mutable directory corpus currently not supported");
 		}
 		if (!hasValue(mimeType)) {
@@ -141,7 +141,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 					throw new ResourceInstantiationException(
 							"cannot read file extension " + extension + ", no DocumentFormat available");
 				}
-				if (!readonlyDocuments) {
+				if (!getReadonlyDocuments()) {
 					if (getExporterForExtension(extension) == null) {
 						throw new ResourceInstantiationException(
 								"cannot write file extension " + extension + ", no DocumentExporter available");
