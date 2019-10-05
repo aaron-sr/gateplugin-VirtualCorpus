@@ -301,13 +301,13 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		}
 
 		private void registerDocument() {
-			document.addDocumentListener(this);
 			registerFeatureMap(document.getFeatures());
 
 			registerAnnotationSet(document.getAnnotations());
 			for (AnnotationSet annotationSet : document.getNamedAnnotationSets().values()) {
 				registerAnnotationSet(annotationSet);
 			}
+			document.addDocumentListener(this);
 		}
 
 		private void unregisterDocument() {
