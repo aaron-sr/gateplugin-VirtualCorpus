@@ -1,8 +1,5 @@
 package gate.virtualcorpus;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -14,6 +11,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.zip.DeflaterInputStream;
 import java.util.zip.DeflaterOutputStream;
@@ -22,7 +22,10 @@ import org.apache.log4j.Logger;
 
 import gate.Document;
 import gate.Factory;
+import gate.FeatureMap;
+import gate.GateConstants;
 import gate.Resource;
+import gate.corpora.DocumentImpl;
 import gate.creole.AbstractResource;
 import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
@@ -36,12 +39,18 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	private static final long serialVersionUID = 2056672632092000437L;
 	private static Logger logger = Logger.getLogger(SerializedFilesCorpus.class);
 
-	public static final String FILE_EXTENSION = ".ser";
+	public static final String SERIALIZED_FILE_EXTENSION = ".ser";
+	public static final String COMPRESSED_FILE_EXTENSION = ".zz";
 
 	protected URL directoryURL;
 	protected Boolean compressedFiles;
+	protected String encoding;
+	protected String mimeType;
 
-	private File directory;
+	private Path directory;
+	private Integer size;
+	private boolean regularFiles;
+	private List<Path> paths;
 
 	@CreoleParameter(comment = "The directory URL where files will be read from", defaultValue = "")
 	public void setDirectoryURL(URL directoryURL) {
@@ -86,21 +95,66 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 		return compressedFiles;
 	}
 
+	@Optional
+	@CreoleParameter(comment = "encoding to read and write document content", defaultValue = "")
+	public final void setEncoding(String encoding) {
+		this.encoding = encoding;
+	}
+
+	public final String getEncoding() {
+		return encoding;
+	}
+
+	@Optional
+	@CreoleParameter(comment = "mimeType to read (and write, if exporterClassName is not set) document content", defaultValue = "")
+	public final void setMimeType(String mimeType) {
+		this.mimeType = mimeType;
+	}
+
+	public final String getMimeType() {
+		return mimeType;
+	}
+
 	@Override
 	public Resource init() throws ResourceInstantiationException {
+		checkValidMimeType(mimeType, false);
 		if (directoryURL == null) {
 			throw new ResourceInstantiationException("directoryURL must be set");
 		}
 		try {
-			directory = gate.util.Files.fileFromURL(directoryURL).getCanonicalFile();
+			directory = gate.util.Files.fileFromURL(directoryURL).toPath();
 		} catch (Exception e) {
 			throw new ResourceInstantiationException("directoryURL is not a valid file url", e);
 		}
-		if (!directory.exists()) {
-			directory.mkdirs();
+		if (!Files.exists(directory)) {
+			try {
+				Files.createDirectories(directory);
+			} catch (IOException e) {
+				throw new ResourceInstantiationException(e);
+			}
 		}
-		if (!directory.isDirectory()) {
+		if (!Files.isDirectory(directory)) {
 			throw new ResourceInstantiationException("directoryURL is not a directory");
+		}
+		try {
+			if (containsDirectories(directory)) {
+				throw new ResourceInstantiationException("directory contains sub directories");
+			}
+
+			size = countFiles(directory);
+			regularFiles = IntStream.range(0, size)
+					.anyMatch(index -> !Files.exists(directory.resolve(indexedPath(index))));
+
+			if (regularFiles) {
+				try (Stream<Path> stream = Files.list(directory)) {
+					paths = stream.collect(Collectors.toList());
+				}
+				paths.removeAll(paths.stream().map(path -> writePath(path)).collect(Collectors.toSet()));
+				size = paths.size();
+			}
+
+		} catch (IOException e) {
+			throw new ResourceInstantiationException(e);
 		}
 
 		initVirtualCorpus();
@@ -110,24 +164,55 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	@Override
 	protected int loadSize() throws Exception {
-		try (Stream<Path> stream = Files.list(Paths.get(directoryURL.toURI()))
-				.filter(p -> p.getFileName().toString().endsWith(FILE_EXTENSION))) {
-			return (int) stream.count();
-		}
+		return size;
 	}
 
 	@Override
 	protected String loadDocumentName(int index) throws Exception {
-		return readDocument(index).getName();
+		Path path = paths.get(index);
+		if (regularFiles) {
+			return path.getFileName().toString();
+		} else {
+			return readDocument(path).getName();
+		}
 	}
 
 	@Override
 	protected Document loadDocument(int index) throws Exception {
-		Document readDocument = readDocument(index);
+		if (regularFiles) {
+			Path path = paths.get(index);
+			Path writePath = writePath(path);
+			String documentName = getDocumentName(index);
+			if (Files.exists(writePath)) {
+				return loadDocument(writePath, documentName);
+			}
+			String content = new String(Files.readAllBytes(path));
+			FeatureMap features = Factory.newFeatureMap();
+			features.put(GateConstants.THROWEX_FORMAT_PROPERTY_NAME, true);
+			FeatureMap params = Factory.newFeatureMap();
+			params.put(Document.DOCUMENT_STRING_CONTENT_PARAMETER_NAME, content);
+			params.put(Document.DOCUMENT_ENCODING_PARAMETER_NAME, encoding);
+			params.put(Document.DOCUMENT_MIME_TYPE_PARAMETER_NAME, mimeType);
+			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, features, documentName);
+		} else {
+			Path path = indexedPath(index);
+			return loadDocument(path);
+		}
+
+	}
+
+	private Document loadDocument(Path path) throws Exception {
+		return loadDocument(path, null);
+	}
+
+	private Document loadDocument(Path path, String documentName) throws Exception {
+		Document readDocument = readDocument(path);
+		if (documentName == null) {
+			documentName = readDocument.getName();
+		}
 
 		Document document = (Document) Factory.createResource(readDocument.getClass().getCanonicalName(),
-				AbstractResource.getInitParameterValues(readDocument), readDocument.getFeatures(),
-				readDocument.getName());
+				AbstractResource.getInitParameterValues(readDocument), readDocument.getFeatures(), documentName);
 
 		DocumentUtil.validateEmptyDocument(document);
 		DocumentUtil.copyDocumentValues(readDocument, document);
@@ -135,23 +220,26 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 		return document;
 	}
 
-	private Document readDocument(int index) throws IOException, ClassNotFoundException {
-		try (ObjectInputStream inputStream = new GateObjectInputStream(openInputStream(index))) {
-			return (Document) inputStream.readObject();
+	private Document readDocument(Path path) throws Exception {
+		InputStream is = Files.newInputStream(path);
+		if (compressedFiles) {
+			is = new DeflaterInputStream(is);
+		}
+		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
+			return (Document) ois.readObject();
 		}
 	}
 
 	@Override
 	protected void addDocuments(int index, Collection<? extends Document> documents) throws Exception {
+		if (regularFiles) {
+			throw new UnsupportedOperationException();
+		}
 		int insertCount = documents.size();
 		for (int i = size() - 1; i >= index; i--) {
-			File oldFile = getFile(i);
-			File newFile = getFile(i + insertCount);
-			boolean success = oldFile.renameTo(newFile);
-			if (!success) {
-				throw new IllegalStateException("cannot rename file '" + oldFile.getAbsolutePath() + "' to '"
-						+ newFile.getAbsolutePath() + "'");
-			}
+			Path oldPath = indexedPath(i);
+			Path newPath = indexedPath(i + insertCount);
+			Files.move(oldPath, newPath);
 		}
 		Iterator<? extends Document> iterator = documents.iterator();
 		for (int i = index; i < index + insertCount; i++) {
@@ -161,9 +249,23 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	@Override
 	protected void setDocument(int index, Document document) throws Exception {
-		try (ObjectOutputStream outputStream = new ObjectOutputStream(openOutputStream(index))) {
-			outputStream.writeObject(document);
-			outputStream.flush();
+		Path path;
+		if (regularFiles) {
+			path = writePath(paths.get(index));
+		} else {
+			path = indexedPath(index);
+		}
+		writeDocument(path, document);
+	}
+
+	private void writeDocument(Path path, Document document) throws IOException {
+		OutputStream os = Files.newOutputStream(path);
+		if (compressedFiles) {
+			os = new DeflaterOutputStream(os, true);
+		}
+		try (ObjectOutputStream oos = new ObjectOutputStream(os)) {
+			oos.writeObject(document);
+			oos.flush();
 		}
 	}
 
@@ -174,8 +276,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	@Override
 	protected void deleteAllDocuments() throws Exception {
-		try (Stream<Path> stream = Files.list(Paths.get(directory.toURI()))
-				.filter(p -> p.getFileName().endsWith(FILE_EXTENSION))) {
+		try (Stream<Path> stream = Files.list(directory)) {
 			stream.forEach(path -> {
 				try {
 					Files.delete(path);
@@ -188,28 +289,35 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	@Override
 	protected void renameDocument(Document document, String oldName, String newName) throws Exception {
+		if (regularFiles) {
+			throw new UnsupportedOperationException();
+		}
 		document.setName(newName);
 		setDocument(this.indexOf(document), document);
 	}
 
-	private OutputStream openOutputStream(int index) throws IOException {
-		OutputStream outputStream = new FileOutputStream(getFile(index));
-		if (compressedFiles) {
-			outputStream = new DeflaterOutputStream(outputStream, true);
-		}
-		return outputStream;
+	private Path indexedPath(int index) {
+		return writePath(Paths.get(String.valueOf(index)));
 	}
 
-	private InputStream openInputStream(int index) throws IOException {
-		InputStream inputStream = new FileInputStream(getFile(index));
+	private Path writePath(Path path) {
+		String extension = SERIALIZED_FILE_EXTENSION;
 		if (compressedFiles) {
-			inputStream = new DeflaterInputStream(inputStream);
+			extension += COMPRESSED_FILE_EXTENSION;
 		}
-		return inputStream;
+		return path.resolveSibling(path.getFileName() + extension);
 	}
 
-	private File getFile(int index) {
-		return new File(directory, index + FILE_EXTENSION);
+	private static int countFiles(final Path directory) throws IOException {
+		try (Stream<Path> stream = Files.list(directory)) {
+			return (int) stream.count();
+		}
+	}
+
+	private static boolean containsDirectories(final Path directory) throws IOException {
+		try (Stream<Path> stream = Files.list(directory)) {
+			return stream.anyMatch(path -> Files.isDirectory(path));
+		}
 	}
 
 }
