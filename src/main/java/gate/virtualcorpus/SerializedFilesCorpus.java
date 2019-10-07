@@ -169,11 +169,11 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	@Override
 	protected String loadDocumentName(int index) throws Exception {
-		Path path = paths.get(index);
 		if (regularFiles) {
+			Path path = paths.get(index);
 			return path.getFileName().toString();
 		} else {
-			return readDocument(path).getName();
+			return readDocument(indexedPath(index)).getName();
 		}
 	}
 
