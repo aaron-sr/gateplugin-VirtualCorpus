@@ -297,7 +297,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	}
 
 	private Path indexedPath(int index) {
-		return writePath(Paths.get(String.valueOf(index)));
+		return writePath(directory.resolve(Paths.get(String.valueOf(index))));
 	}
 
 	private Path writePath(Path path) {
