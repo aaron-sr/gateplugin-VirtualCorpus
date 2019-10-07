@@ -525,17 +525,10 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 				throw new IllegalArgumentException(
 						"document already loaded " + document + " at another index " + indexOf(document));
 			}
-			if (this.isDocumentNameLoaded(index)) {
-				if (!document.getName().contentEquals(this.getDocumentName(index))) {
-					throw new IllegalArgumentException("document name already loaded" + index + " and different");
-				}
-			} else {
-				documentNameLoaded(index, document.getName());
-			}
+			documentNameLoaded(index, document.getName());
+			documentChangeObservers.put(document, new DocumentChangeObserver(document));
 		}
 		loadedDocuments.put(index, document);
-		documentChangeObservers.put(document, new DocumentChangeObserver(document));
-
 	}
 
 	@Override
