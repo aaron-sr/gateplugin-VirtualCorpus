@@ -442,6 +442,22 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	}
 
 	private final void unload() {
+		Iterator<Entry<Integer, Document>> iterator = loadedDocuments.entrySet().iterator();
+		while (iterator.hasNext()) {
+			Entry<Integer, Document> entry = iterator.next();
+			Integer index = entry.getKey();
+			Document document = entry.getValue();
+			if (!readonlyDocuments && hasDocumentChanged(document)) {
+				try {
+					saveDocument(document);
+				} catch (Exception e) {
+					throw new GateRuntimeException("cannot update document " + document, e);
+				}
+			}
+			iterator.remove();
+			documentChangeObservers.remove(document).unregisterDocument();
+			documentUnloaded(index, document);
+		}
 		loaded = false;
 	}
 
