@@ -5,6 +5,7 @@ import java.util.Collection;
 
 import gate.Annotation;
 import gate.Document;
+import gate.GateConstants;
 import gate.corpora.DocumentContentImpl;
 import gate.util.DocumentFormatException;
 
@@ -20,6 +21,9 @@ public class DocumentUtil {
 		Collection<String> annotationSetNames = new ArrayList<>();
 		Collection<String> relationSetNames = new ArrayList<>();
 		for (String annotationSetName : document.getAnnotationSetNames()) {
+			if (GateConstants.ORIGINAL_MARKUPS_ANNOT_SET_NAME.contentEquals(annotationSetName)) {
+				continue;
+			}
 			if (!document.getAnnotations(annotationSetName).isEmpty()) {
 				annotationSetNames.add(annotationSetName);
 			}
@@ -48,6 +52,9 @@ public class DocumentUtil {
 			toDocument.getAnnotations().getRelations().addAll(fromDocument.getAnnotations().getRelations());
 		}
 		for (String annotationSetName : fromDocument.getAnnotationSetNames()) {
+			if (GateConstants.ORIGINAL_MARKUPS_ANNOT_SET_NAME.contentEquals(annotationSetName)) {
+				continue;
+			}
 			if (!fromDocument.getAnnotations(annotationSetName).isEmpty()) {
 				for (Annotation annotation : fromDocument.getAnnotations(annotationSetName)) {
 					toDocument.getAnnotations(annotationSetName).add(annotation);
