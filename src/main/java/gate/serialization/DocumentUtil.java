@@ -20,9 +20,6 @@ public class DocumentUtil {
 		Collection<String> annotationSetNames = new ArrayList<>();
 		Collection<String> relationSetNames = new ArrayList<>();
 		for (String annotationSetName : document.getAnnotationSetNames()) {
-			if (annotationSetName.length() == 0) {
-				continue;
-			}
 			if (!document.getAnnotations(annotationSetName).isEmpty()) {
 				annotationSetNames.add(annotationSetName);
 			}
@@ -51,9 +48,6 @@ public class DocumentUtil {
 			toDocument.getAnnotations().getRelations().addAll(fromDocument.getAnnotations().getRelations());
 		}
 		for (String annotationSetName : fromDocument.getAnnotationSetNames()) {
-			if (annotationSetName.length() == 0) {
-				continue;
-			}
 			if (!fromDocument.getAnnotations(annotationSetName).isEmpty()) {
 				for (Annotation annotation : fromDocument.getAnnotations(annotationSetName)) {
 					toDocument.getAnnotations(annotationSetName).add(annotation);
