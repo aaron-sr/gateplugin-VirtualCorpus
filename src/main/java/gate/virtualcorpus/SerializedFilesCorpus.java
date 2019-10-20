@@ -13,7 +13,6 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.zip.DeflaterInputStream;
 import java.util.zip.DeflaterOutputStream;
@@ -141,9 +140,19 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 				throw new ResourceInstantiationException("directory contains sub directories");
 			}
 
-			size = countFiles(directory);
-			regularFiles = IntStream.range(0, size)
-					.anyMatch(index -> !Files.exists(directory.resolve(indexedPath(index))));
+			regularFiles = false;
+			int maxIndex = -1;
+			Iterator<Path> iterator = Files.list(directory).iterator();
+			while (iterator.hasNext()) {
+				Path path = iterator.next();
+				int index = getIndex(path);
+				if (index < 0) {
+					regularFiles = true;
+					break;
+				} else {
+					maxIndex = Math.max(maxIndex, index);
+				}
+			}
 
 			if (regularFiles) {
 				try (Stream<Path> stream = Files.list(directory)) {
@@ -151,6 +160,8 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 				}
 				paths.removeAll(paths.stream().map(path -> writePath(path)).collect(Collectors.toSet()));
 				size = paths.size();
+			} else {
+				size = maxIndex + 1;
 			}
 
 		} catch (IOException e) {
@@ -196,6 +207,9 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 			return (Document) Factory.createResource(DocumentImpl.class.getName(), params, features, documentName);
 		} else {
 			Path path = indexedPath(index);
+			if (!Files.exists(path)) {
+				return null;
+			}
 			return loadDocument(path);
 		}
 
@@ -297,15 +311,35 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	}
 
 	private Path indexedPath(int index) {
-		return writePath(directory.resolve(Paths.get(String.valueOf(index))));
+		String filename = String.valueOf(index);
+		return directory.resolve(writePath(Paths.get(filename)));
+	}
+
+	private int getIndex(Path path) {
+		String filename = path.getFileName().toString();
+		String extension = getWriteExtension();
+		if (filename.endsWith(extension)) {
+			filename = filename.substring(0, filename.length() - extension.length());
+		}
+
+		try {
+			return Integer.valueOf(filename);
+		} catch (NumberFormatException e) {
+			return -1;
+		}
 	}
 
 	private Path writePath(Path path) {
+		String extension = getWriteExtension();
+		return path.resolveSibling(path.getFileName() + extension);
+	}
+
+	private String getWriteExtension() {
 		String extension = SERIALIZED_FILE_EXTENSION;
 		if (compressedFiles) {
 			extension += COMPRESSED_FILE_EXTENSION;
 		}
-		return path.resolveSibling(path.getFileName() + extension);
+		return extension;
 	}
 
 	private static int countFiles(final Path directory) throws IOException {

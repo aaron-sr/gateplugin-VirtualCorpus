@@ -607,6 +607,10 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		} catch (Exception e) {
 			throw new GateRuntimeException("cannot load document name " + index, e);
 		}
+
+		if (documentName == null) {
+			return null;
+		}
 		documentNameLoaded(index, documentName);
 		return documentName;
 	}
@@ -622,14 +626,17 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		Document document;
 		try {
 			document = loadDocument(index);
-			if (document.getFeatures().getOrDefault("gate.SourceURL", "created from String")
-					.equals("created from String")) {
-				document.getFeatures().put("gate.SourceURL", "created from " + this.getClass().getSimpleName());
-			}
 		} catch (Exception e) {
 			throw new GateRuntimeException("cannot load document " + index, e);
 		}
 
+		if (document == null) {
+			return null;
+		}
+		if (document.getFeatures().getOrDefault("gate.SourceURL", "created from String")
+				.equals("created from String")) {
+			document.getFeatures().put("gate.SourceURL", "created from " + this.getClass().getSimpleName());
+		}
 		documentLoaded(index, document);
 		return document;
 	}
