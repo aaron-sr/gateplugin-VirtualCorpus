@@ -184,7 +184,12 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 			Path path = paths.get(index);
 			return path.getFileName().toString();
 		} else {
-			return readDocument(indexedPath(index)).getName();
+			Path path = indexedPath(index);
+			if (!Files.exists(path)) {
+				return null;
+			}
+			Document document = readDocument(path);
+			return document.getName();
 		}
 	}
 
