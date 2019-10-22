@@ -188,8 +188,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 			if (!Files.exists(path)) {
 				return null;
 			}
-			Document document = readDocument(path);
-			return document.getName();
+			return readDocumentName(path);
 		}
 	}
 
@@ -220,35 +219,6 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	}
 
-	private Document loadDocument(Path path) throws Exception {
-		return loadDocument(path, null);
-	}
-
-	private Document loadDocument(Path path, String documentName) throws Exception {
-		Document readDocument = readDocument(path);
-		if (documentName == null) {
-			documentName = readDocument.getName();
-		}
-
-		Document document = (Document) Factory.createResource(readDocument.getClass().getCanonicalName(),
-				AbstractResource.getInitParameterValues(readDocument), readDocument.getFeatures(), documentName);
-
-		DocumentUtil.validateEmptyDocument(document);
-		DocumentUtil.copyDocumentValues(readDocument, document);
-
-		return document;
-	}
-
-	private Document readDocument(Path path) throws Exception {
-		InputStream is = Files.newInputStream(path);
-		if (compressedFiles) {
-			is = new DeflaterInputStream(is);
-		}
-		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
-			return (Document) ois.readObject();
-		}
-	}
-
 	@Override
 	protected void addDocuments(int index, Collection<? extends Document> documents) throws Exception {
 		if (regularFiles) {
@@ -277,17 +247,6 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 		writeDocument(path, document);
 	}
 
-	private void writeDocument(Path path, Document document) throws IOException {
-		OutputStream os = Files.newOutputStream(path);
-		if (compressedFiles) {
-			os = new DeflaterOutputStream(os, true);
-		}
-		try (ObjectOutputStream oos = new ObjectOutputStream(os)) {
-			oos.writeObject(document);
-			oos.flush();
-		}
-	}
-
 	@Override
 	protected void deleteDocuments(Collection<? extends Document> documents) throws Exception {
 		throw new UnsupportedOperationException();
@@ -313,6 +272,63 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 		}
 		document.setName(newName);
 		setDocument(this.indexOf(document), document);
+	}
+
+	private Document loadDocument(Path path) throws Exception {
+		return loadDocument(path, null);
+	}
+
+	private Document loadDocument(Path path, String documentName) throws Exception {
+		Document readDocument = readDocument(path);
+		if (documentName == null) {
+			documentName = readDocument.getName();
+		}
+
+		Document document = (Document) Factory.createResource(readDocument.getClass().getCanonicalName(),
+				AbstractResource.getInitParameterValues(readDocument), readDocument.getFeatures(), documentName);
+
+		DocumentUtil.validateEmptyDocument(document);
+		DocumentUtil.copyDocumentValues(readDocument, document);
+
+		return document;
+	}
+
+	private Document readDocument(Path path) throws Exception {
+		InputStream is = Files.newInputStream(path);
+		if (compressedFiles) {
+			is = new DeflaterInputStream(is);
+		}
+		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
+			String documentName = (String) ois.readObject();
+			Document document = (Document) ois.readObject();
+			if (!documentName.contentEquals(document.getName())) {
+				throw new IllegalStateException("document names does not match");
+			}
+			return document;
+		}
+	}
+
+	private String readDocumentName(Path path) throws Exception {
+		InputStream is = Files.newInputStream(path);
+		if (compressedFiles) {
+			is = new DeflaterInputStream(is);
+		}
+		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
+			String documentName = (String) ois.readObject();
+			return documentName;
+		}
+	}
+
+	private void writeDocument(Path path, Document document) throws IOException {
+		OutputStream os = Files.newOutputStream(path);
+		if (compressedFiles) {
+			os = new DeflaterOutputStream(os, true);
+		}
+		try (ObjectOutputStream oos = new ObjectOutputStream(os)) {
+			oos.writeObject(document.getName());
+			oos.writeObject(document);
+			oos.flush();
+		}
 	}
 
 	private Path indexedPath(int index) {
@@ -345,12 +361,6 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 			extension += COMPRESSED_FILE_EXTENSION;
 		}
 		return extension;
-	}
-
-	private static int countFiles(final Path directory) throws IOException {
-		try (Stream<Path> stream = Files.list(directory)) {
-			return (int) stream.count();
-		}
 	}
 
 	private static boolean containsDirectories(final Path directory) throws IOException {
