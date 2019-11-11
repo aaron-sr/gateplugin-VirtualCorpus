@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.DeflaterInputStream;
 import java.util.zip.DeflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 
 import org.apache.log4j.Logger;
 
@@ -311,7 +312,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	private String readDocumentName(Path path) throws Exception {
 		InputStream is = Files.newInputStream(path);
 		if (compressedFiles) {
-			is = new DeflaterInputStream(is);
+			is = new InflaterInputStream(is);
 		}
 		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
 			String documentName = (String) ois.readObject();

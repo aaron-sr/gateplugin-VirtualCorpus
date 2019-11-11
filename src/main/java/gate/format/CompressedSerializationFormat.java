@@ -3,8 +3,8 @@ package gate.format;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.util.zip.InflaterInputStream;
 
-import org.apache.http.client.entity.DeflateInputStream;
 import org.apache.log4j.Logger;
 
 import gate.Document;
@@ -33,7 +33,7 @@ public class CompressedSerializationFormat extends SerializationFormat {
 
 	@Override
 	protected InputStream openContentInputStream(Document document) throws UnsupportedEncodingException, IOException {
-		return new DeflateInputStream(super.openContentInputStream(document));
+		return new InflaterInputStream(super.openContentInputStream(document));
 	}
 
 }
