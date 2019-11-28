@@ -441,6 +441,10 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		return documentChangeObservers.get(document).changed;
 	}
 
+	protected boolean isCorpusLoaded() {
+		return loaded;
+	}
+
 	private final void unload() {
 		Iterator<Entry<Integer, Document>> iterator = loadedDocuments.entrySet().iterator();
 		while (iterator.hasNext()) {
@@ -740,7 +744,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 
 	@Override
 	public final Document set(int index, Document document) {
-		checkMutable();
+		checkWritableDocuments();
 		checkLoaded();
 		checkIndex(index);
 
@@ -750,8 +754,14 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			throw new GateRuntimeException("cannot set document " + index + " " + document, e);
 		}
 
-		removeFromIndexMap(loadedDocumentNames, index);
-		Document oldDocument = this.loadedDocuments.put(index, document);
+		Document oldDocument;
+		if (document != null) {
+			oldDocument = loadedDocuments.put(index, document);
+			loadedDocumentNames.put(index, document.getName());
+		} else {
+			oldDocument = loadedDocuments.remove(index);
+			loadedDocumentNames.remove(index);
+		}
 		fireDocumentRemoved(index, oldDocument);
 		fireDocumentAdded(index, document);
 		return oldDocument;
@@ -925,6 +935,12 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	private void checkMutable() {
 		if (immutableCorpus) {
 			throw new IllegalStateException("corpus is immutable");
+		}
+	}
+
+	private void checkWritableDocuments() {
+		if (readonlyDocuments) {
+			throw new IllegalStateException("documents are readonly");
 		}
 	}
 
