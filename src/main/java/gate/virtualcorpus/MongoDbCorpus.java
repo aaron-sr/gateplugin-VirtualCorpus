@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
@@ -465,7 +466,7 @@ public class MongoDbCorpus extends VirtualCorpus {
 	}
 
 	@Override
-	protected void deleteDocuments(Collection<? extends Document> documents) throws Exception {
+	protected void deleteDocuments(Set<Integer> indexes) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 

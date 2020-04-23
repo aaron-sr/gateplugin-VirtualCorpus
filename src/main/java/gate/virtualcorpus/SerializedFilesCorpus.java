@@ -12,6 +12,7 @@ import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.DeflaterInputStream;
@@ -43,7 +44,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	public static final String COMPRESSED_FILE_EXTENSION = ".zz";
 
 	protected URL directoryURL;
-	protected Boolean compressedFiles;
+	protected Boolean compressFiles;
 	protected String encoding;
 	protected String mimeType;
 
@@ -87,12 +88,12 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	@Optional
 	@CreoleParameter(comment = "If true, document files will be compressed via deflate", defaultValue = "false")
-	public void setCompressedFiles(Boolean compressedFiles) {
-		this.compressedFiles = compressedFiles;
+	public void setCompressFiles(Boolean compressFiles) {
+		this.compressFiles = compressFiles;
 	}
 
-	public Boolean getCompressedFiles() {
-		return compressedFiles;
+	public Boolean getCompressFiles() {
+		return compressFiles;
 	}
 
 	@Optional
@@ -106,7 +107,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	}
 
 	@Optional
-	@CreoleParameter(comment = "mimeType to read (and write, if exporterClassName is not set) document content", defaultValue = "")
+	@CreoleParameter(comment = "mimeType to read and write document content", defaultValue = "")
 	public final void setMimeType(String mimeType) {
 		this.mimeType = mimeType;
 	}
@@ -249,8 +250,19 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	}
 
 	@Override
-	protected void deleteDocuments(Collection<? extends Document> documents) throws Exception {
-		throw new UnsupportedOperationException();
+	protected void deleteDocuments(Set<Integer> indexes) throws Exception {
+		if (regularFiles) {
+			throw new UnsupportedOperationException();
+		}
+		Integer firstIndex = indexes.stream().min(Integer::compareTo).get();
+		Integer lastIndex = size();
+
+		Integer newIndex = firstIndex;
+		for (Integer index = firstIndex; index <= lastIndex; index++) {
+			if (!indexes.contains(index)) {
+				Files.move(indexedPath(index), indexedPath(newIndex++));
+			}
+		}
 	}
 
 	@Override
@@ -296,7 +308,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	private Document readDocument(Path path) throws Exception {
 		InputStream is = Files.newInputStream(path);
-		if (compressedFiles) {
+		if (compressFiles) {
 			is = new DeflaterInputStream(is);
 		}
 		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
@@ -311,7 +323,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	private String readDocumentName(Path path) throws Exception {
 		InputStream is = Files.newInputStream(path);
-		if (compressedFiles) {
+		if (compressFiles) {
 			is = new InflaterInputStream(is);
 		}
 		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
@@ -322,7 +334,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	private void writeDocument(Path path, Document document) throws IOException {
 		OutputStream os = Files.newOutputStream(path);
-		if (compressedFiles) {
+		if (compressFiles) {
 			os = new DeflaterOutputStream(os, true);
 		}
 		try (ObjectOutputStream oos = new ObjectOutputStream(os)) {
@@ -358,7 +370,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 
 	private String getWriteExtension() {
 		String extension = SERIALIZED_FILE_EXTENSION;
-		if (compressedFiles) {
+		if (compressFiles) {
 			extension += COMPRESSED_FILE_EXTENSION;
 		}
 		return extension;

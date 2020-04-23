@@ -15,6 +15,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.apache.log4j.Logger;
@@ -668,7 +669,7 @@ public class JdbcCorpus extends VirtualCorpus {
 	}
 
 	@Override
-	protected void deleteDocuments(Collection<? extends Document> documents) throws Exception {
+	protected void deleteDocuments(Set<Integer> indexes) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 

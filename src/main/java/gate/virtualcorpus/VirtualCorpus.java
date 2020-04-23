@@ -10,8 +10,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.ListIterator;
@@ -500,7 +500,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		setDocument(index, document);
 	}
 
-	protected abstract void deleteDocuments(Collection<? extends Document> documents) throws Exception;
+	protected abstract void deleteDocuments(Set<Integer> indexes) throws Exception;
 
 	protected abstract void deleteAllDocuments() throws Exception;
 
@@ -722,7 +722,6 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		if (documents.isEmpty()) {
 			return false;
 		}
-		size();
 
 		try {
 			addDocuments(index, documents);
@@ -730,7 +729,9 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 			throw new GateRuntimeException("cannot add documents " + index + " " + documents, e);
 		}
 
-		shiftIndexMap(loadedDocumentNames, index, documents.size());
+		if (index < size() && !loadedDocumentNames.isEmpty()) {
+			shiftIndexMap(loadedDocumentNames, index, loadedDocumentNames.lastKey() + 1, documents.size());
+		}
 		addAllToIndexMap(loadedDocuments, index, documents);
 		size += documents.size();
 		modCount++;
@@ -772,21 +773,25 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		checkMutable();
 		checkLoaded();
 		checkIndex(index);
-		size();
 		Document document = get(index);
 
+		Set<Integer> indexes = Set.of(index);
 		try {
-			deleteDocuments(toList(document));
+			deleteDocuments(indexes);
 		} catch (Exception e) {
 			throw new GateRuntimeException("cannot delete document " + index + " " + document, e);
 		}
 
-		removeFromIndexMap(loadedDocumentNames, index);
-		Document oldDocument = removeFromIndexMap(loadedDocuments, index);
+		if (!loadedDocumentNames.isEmpty()) {
+			removeFromIndexMap(loadedDocumentNames, index, loadedDocumentNames.lastKey() + 1, indexes);
+		}
+		if (!loadedDocuments.isEmpty()) {
+			removeFromIndexMap(loadedDocuments, index, loadedDocuments.lastKey() + 1, indexes);
+		}
 		size--;
 		modCount++;
 
-		fireDocumentRemoved(index, oldDocument);
+		fireDocumentRemoved(index, document);
 		return document;
 	}
 
@@ -807,61 +812,43 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	public final boolean removeAll(Collection<?> collection) {
 		checkMutable();
 		checkLoaded();
-		Collection<Document> removeDocuments = new HashSet<>(this.loadedDocuments.values());
-		removeDocuments.retainAll(collection);
-		if (removeDocuments.isEmpty()) {
-			return false;
-		}
-		size();
-
-		try {
-			deleteDocuments(removeDocuments);
-		} catch (Exception e) {
-			throw new GateRuntimeException("cannot delete documents " + removeDocuments, e);
-		}
-
-		for (Document document : removeDocuments) {
-			while (this.contains(document)) {
-				int index = this.lastIndexOf(document);
-				removeFromIndexMap(loadedDocumentNames, index);
-				Document oldDocument = removeFromIndexMap(loadedDocuments, index);
-				fireDocumentRemoved(index, oldDocument);
-				documentChangeObservers.remove(document).unregisterDocument();
-			}
-		}
-		size -= removeDocuments.size();
-		modCount++;
-
-		return true;
+		Set<Integer> indexes = loadedDocuments.entrySet().stream().filter(e -> collection.contains(e.getValue()))
+				.map(e -> e.getKey()).collect(Collectors.toUnmodifiableSet());
+		return removeAll(indexes);
 	}
 
 	@Override
 	public final boolean retainAll(Collection<?> collection) {
 		checkMutable();
 		checkLoaded();
-		Collection<Document> removeDocuments = new HashSet<>(this.loadedDocuments.values());
-		removeDocuments.removeAll(collection);
-		if (removeDocuments.isEmpty()) {
+		Set<Integer> indexes = loadedDocuments.entrySet().stream().filter(e -> !collection.contains(e.getValue()))
+				.map(e -> e.getKey()).collect(Collectors.toUnmodifiableSet());
+		return removeAll(indexes);
+	}
+
+	private boolean removeAll(Set<Integer> indexes) {
+		if (indexes.isEmpty()) {
 			return false;
 		}
-		size();
 
 		try {
-			deleteDocuments(removeDocuments);
+			deleteDocuments(indexes);
 		} catch (Exception e) {
-			throw new GateRuntimeException("cannot delete documents " + removeDocuments, e);
+			throw new GateRuntimeException("cannot delete documents " + indexes, e);
 		}
 
-		for (Document document : removeDocuments) {
-			while (this.contains(document)) {
-				int index = this.lastIndexOf(document);
-				removeFromIndexMap(loadedDocumentNames, index);
-				Document oldDocument = removeFromIndexMap(loadedDocuments, index);
-				fireDocumentRemoved(index, oldDocument);
-				documentChangeObservers.remove(document).unregisterDocument();
-			}
+		Map<Integer, Document> removeDocuments = removeFromIndexMap(loadedDocuments, indexes);
+		Integer firstIndex = removeDocuments.keySet().stream().min(Integer::compareTo).get();
+		removeFromIndexMap(loadedDocumentNames, firstIndex, loadedDocumentNames.lastKey() + 1, indexes);
+
+		for (Entry<Integer, Document> entry : removeDocuments.entrySet()) {
+			Integer index = entry.getKey();
+			Document document = entry.getValue();
+			fireDocumentRemoved(index, document);
+			documentChangeObservers.remove(document).unregisterDocument();
 		}
-		size -= removeDocuments.size();
+		size();
+		size -= indexes.size();
 		modCount++;
 
 		return true;
@@ -894,30 +881,68 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		modCount++;
 	}
 
-	private static final <E> boolean addAllToIndexMap(SortedMap<Integer, E> map, Integer index,
+	public static final <E> boolean addAllToIndexMap(SortedMap<Integer, E> map, Integer index,
 			Collection<? extends E> c) {
 		if (c.isEmpty()) {
 			return false;
 		}
-		shiftIndexMap(map, index, c.size());
+		if (!map.isEmpty()) {
+			Integer endIndex = map.lastKey() + 1;
+			if (index < endIndex) {
+				shiftIndexMap(map, index, endIndex, c.size());
+			}
+		}
 		for (E e : c) {
 			map.put(index++, e);
 		}
 		return true;
 	}
 
-	private static final <E> E removeFromIndexMap(SortedMap<Integer, E> map, Integer index) {
-		E old = map.remove(index);
-		shiftIndexMap(map, index + 1, -1);
-		return old;
+	public static final <E> void shiftIndexMap(Map<Integer, E> map, Integer startIndex, Integer endIndex,
+			Integer shift) {
+		Integer overlapping = startIndex + shift - 1;
+		for (Integer index = endIndex - 1; index >= startIndex; index--) {
+			if (map.containsKey(index)) {
+				E element = map.get(index);
+				if (element != null) {
+					map.put(index + shift, element);
+				}
+				if (index <= overlapping || !map.containsKey(index - shift)) {
+					map.remove(index);
+				}
+			}
+		}
 	}
 
-	private static final <E> void shiftIndexMap(SortedMap<Integer, E> map, Integer from, Integer shift) {
-		Map<Integer, E> oldValues = map.tailMap(from);
-		Map<Integer, E> movedValues = oldValues.entrySet().stream()
-				.collect(Collectors.toMap(x -> x.getKey() + shift, x -> x.getValue()));
-		map.keySet().removeAll(oldValues.keySet());
-		map.putAll(movedValues);
+	public static final <E> Map<Integer, E> removeFromIndexMap(SortedMap<Integer, E> map, Set<Integer> indexes) {
+		Map<Integer, E> removeElements = indexes.stream().filter(index -> map.containsKey(index))
+				.collect(Collectors.toMap(index -> index, index -> map.get(index), (k1, k2) -> {
+					throw new IllegalStateException();
+				}, LinkedHashMap::new));
+
+		if (!removeElements.isEmpty()) {
+			removeFromIndexMap(map, map.firstKey(), map.lastKey() + 1, indexes);
+		}
+
+		return removeElements;
+	}
+
+	public static final <E> void removeFromIndexMap(Map<Integer, E> map, Integer startIndex, Integer endIndex,
+			Set<Integer> indexes) {
+		Integer newIndex = startIndex;
+		Integer overlappingIndex = endIndex - indexes.size();
+		for (Integer index = startIndex; index < endIndex; index++) {
+			if (!indexes.contains(index)) {
+				E element = map.get(index);
+				if (element != null) {
+					map.put(newIndex, element);
+				}
+				newIndex++;
+			}
+			if (index >= overlappingIndex) {
+				map.remove(index);
+			}
+		}
 	}
 
 	private void checkLoaded() {

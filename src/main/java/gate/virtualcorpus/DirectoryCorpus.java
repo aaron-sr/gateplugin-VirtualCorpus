@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
@@ -257,7 +258,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 	}
 
 	@Override
-	protected void deleteDocuments(Collection<? extends Document> documents) throws Exception {
+	protected void deleteDocuments(Set<Integer> indexes) throws Exception {
 		throw new UnsupportedOperationException();
 	}
 
