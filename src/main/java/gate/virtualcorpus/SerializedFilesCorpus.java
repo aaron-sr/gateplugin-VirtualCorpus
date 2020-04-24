@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.zip.DeflaterInputStream;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
@@ -309,7 +308,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	private Document readDocument(Path path) throws Exception {
 		InputStream is = Files.newInputStream(path);
 		if (compressFiles) {
-			is = new DeflaterInputStream(is);
+			is = new InflaterInputStream(is);
 		}
 		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
 			String documentName = (String) ois.readObject();

@@ -14,9 +14,10 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.zip.DeflaterInputStream;
 import java.util.zip.DeflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 
+import org.apache.log4j.Logger;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.DBMaker.Maker;
@@ -36,6 +37,7 @@ import gate.serialization.GateObjectInputStream;
 @CreoleResource(name = "MapDbCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by serialized GATE documents in a MapDB")
 public class MapDbCorpus extends VirtualCorpus {
 	private static final long serialVersionUID = -685151146997248070L;
+	private static Logger logger = Logger.getLogger(MapDbCorpus.class);
 
 	protected static final String DOCUMENTSSIZE_MAPNAME = "documentsSize";
 	protected static final String DOCUMENTNAMES_MAPNAME = "documentNames";
@@ -164,7 +166,7 @@ public class MapDbCorpus extends VirtualCorpus {
 		int i = index;
 		Iterator<? extends Document> iterator = documents.iterator();
 		while (iterator.hasNext()) {
-			Document document = (Document) iterator.next();
+			Document document = iterator.next();
 			documentNames.put(i, document.getName());
 			documentBytes.put(i, buildBytes(document));
 			i++;
@@ -201,7 +203,7 @@ public class MapDbCorpus extends VirtualCorpus {
 	private Document readDocument(int index) throws Exception {
 		InputStream is = new ByteArrayInputStream(documentBytes.get(index));
 		if (compressDocuments) {
-			is = new DeflaterInputStream(is);
+			is = new InflaterInputStream(is);
 		}
 		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
 			Document document = (Document) ois.readObject();
