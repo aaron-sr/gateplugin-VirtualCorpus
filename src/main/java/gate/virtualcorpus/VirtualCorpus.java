@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.log4j.Logger;
 
@@ -775,7 +776,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		checkIndex(index);
 		Document document = get(index);
 
-		Set<Integer> indexes = Set.of(index);
+		Set<Integer> indexes = Collections.unmodifiableSet(Stream.of(index).collect(Collectors.toSet()));
 		try {
 			deleteDocuments(indexes);
 		} catch (Exception e) {
@@ -812,8 +813,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	public final boolean removeAll(Collection<?> collection) {
 		checkMutable();
 		checkLoaded();
-		Set<Integer> indexes = loadedDocuments.entrySet().stream().filter(e -> collection.contains(e.getValue()))
-				.map(e -> e.getKey()).collect(Collectors.toSet());
+		Set<Integer> indexes = Collections.unmodifiableSet(loadedDocuments.entrySet().stream()
+				.filter(e -> collection.contains(e.getValue())).map(e -> e.getKey()).collect(Collectors.toSet()));
 		return removeAll(indexes);
 	}
 
@@ -821,8 +822,8 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 	public final boolean retainAll(Collection<?> collection) {
 		checkMutable();
 		checkLoaded();
-		Set<Integer> indexes = loadedDocuments.entrySet().stream().filter(e -> !collection.contains(e.getValue()))
-				.map(e -> e.getKey()).collect(Collectors.toUnmodifiableSet());
+		Set<Integer> indexes = Collections.unmodifiableSet(loadedDocuments.entrySet().stream()
+				.filter(e -> !collection.contains(e.getValue())).map(e -> e.getKey()).collect(Collectors.toSet()));
 		return removeAll(indexes);
 	}
 
