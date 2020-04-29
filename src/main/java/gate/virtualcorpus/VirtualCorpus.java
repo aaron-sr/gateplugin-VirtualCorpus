@@ -84,7 +84,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		return cacheDocumentNames;
 	}
 
-	private VirtualCorpusCreoleListener creoleListener;
+	private transient VirtualCorpusCreoleListener creoleListener;
 	private boolean loaded = false;
 
 	private Integer size;
@@ -813,7 +813,7 @@ public abstract class VirtualCorpus extends AbstractLanguageResource implements 
 		checkMutable();
 		checkLoaded();
 		Set<Integer> indexes = loadedDocuments.entrySet().stream().filter(e -> collection.contains(e.getValue()))
-				.map(e -> e.getKey()).collect(Collectors.toUnmodifiableSet());
+				.map(e -> e.getKey()).collect(Collectors.toSet());
 		return removeAll(indexes);
 	}
 

@@ -46,10 +46,10 @@ public class MapDbCorpus extends VirtualCorpus {
 	private URL mapDbFile;
 	private Boolean compressDocuments;
 
-	private DB mapDb;
-	private org.mapdb.Atomic.Integer size;
-	private Map<Integer, byte[]> documentBytes;
-	private Map<Integer, String> documentNames;
+	private transient DB mapDb;
+	private transient org.mapdb.Atomic.Integer size;
+	private transient Map<Integer, byte[]> documentBytes;
+	private transient Map<Integer, String> documentNames;
 
 	@Override
 	@Optional

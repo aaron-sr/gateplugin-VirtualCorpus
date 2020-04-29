@@ -44,7 +44,7 @@ public class DirectoryCorpus extends VirtualCorpus {
 	protected String mimeType;
 	protected String exporterClassName;
 
-	private File directory;
+	private transient File directory;
 
 	@CreoleParameter(comment = "The directory URL where files will be read from", defaultValue = "")
 	public void setDirectoryURL(URL dirURL) {

@@ -47,10 +47,10 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	protected String encoding;
 	protected String mimeType;
 
-	private Path directory;
-	private Integer size;
-	private boolean regularFiles;
-	private List<Path> paths;
+	private transient Path directory;
+	private transient Integer size;
+	private transient boolean regularFiles;
+	private transient List<Path> paths;
 
 	@CreoleParameter(comment = "The directory URL where files will be read from", defaultValue = "")
 	public void setDirectoryURL(URL directoryURL) {

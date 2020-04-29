@@ -68,20 +68,20 @@ public class MongoDbCorpus extends VirtualCorpus {
 	protected String encoding;
 	protected String mimeType;
 
-	private List<String> nameKeyList;
-	private List<String> contentKeyList;
-	private List<String> featureKeyList;
-	private Map<String, String> exportKeyMapping;
+	private transient List<String> nameKeyList;
+	private transient List<String> contentKeyList;
+	private transient List<String> featureKeyList;
+	private transient Map<String, String> exportKeyMapping;
 
-	private MongoClient client;
-	private MongoDatabase database;
-	private MongoCollection<org.bson.Document> collection;
-	private FindIterable<org.bson.Document> cursor;
-	private int cursorPosition;
-	private MongoCursor<org.bson.Document> iterator;
-	private int iteratorPosition;
-	private DB cacheDb;
-	private Map<Integer, String> idCache;
+	private transient MongoClient client;
+	private transient MongoDatabase database;
+	private transient MongoCollection<org.bson.Document> collection;
+	private transient FindIterable<org.bson.Document> cursor;
+	private transient int cursorPosition;
+	private transient MongoCursor<org.bson.Document> iterator;
+	private transient int iteratorPosition;
+	private transient DB cacheDb;
+	private transient Map<Integer, String> idCache;
 
 	@CreoleParameter(comment = "The host of the MongoDB", defaultValue = "localhost")
 	public void setHost(String host) {

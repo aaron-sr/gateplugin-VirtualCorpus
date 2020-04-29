@@ -85,21 +85,21 @@ public class JdbcCorpus extends VirtualCorpus {
 	protected String encoding;
 	protected String mimeType;
 
-	private Collection<String> allTableColumns;
-	private List<String> columns;
-	private List<String> nameColumnList;
-	private List<String> contentColumnList;
-	private List<String> featureColumnList;
-	private Map<String, String> exportColumnMapping;
+	private transient Collection<String> allTableColumns;
+	private transient List<String> columns;
+	private transient List<String> nameColumnList;
+	private transient List<String> contentColumnList;
+	private transient List<String> featureColumnList;
+	private transient Map<String, String> exportColumnMapping;
 
-	private Connection connection;
-	private PreparedStatement idStatement;
-	private ResultSet idResultSet;
-	private PreparedStatement valuesStatement;
-	private ResultSet valuesResultSet;
-	private Map<String, PreparedStatement> updateStatements;
-	private Map<ResultSet, Integer> rowsSelectCounts = new HashMap<>();
-	private Integer updateCount = 0;
+	private transient Connection connection;
+	private transient PreparedStatement idStatement;
+	private transient ResultSet idResultSet;
+	private transient PreparedStatement valuesStatement;
+	private transient ResultSet valuesResultSet;
+	private transient Map<String, PreparedStatement> updateStatements;
+	private transient Map<ResultSet, Integer> rowsSelectCounts = new HashMap<>();
+	private transient Integer updateCount = 0;
 
 	private Map<Integer, Object> loadedIds = new HashMap<>();
 
