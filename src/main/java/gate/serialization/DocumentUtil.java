@@ -2,11 +2,13 @@ package gate.serialization;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.stream.Stream;
 
 import gate.Annotation;
 import gate.Document;
 import gate.GateConstants;
 import gate.corpora.DocumentContentImpl;
+import gate.corpora.DocumentImpl;
 import gate.util.DocumentFormatException;
 
 public class DocumentUtil {
@@ -68,6 +70,33 @@ public class DocumentUtil {
 		if (!fromDocument.getFeatures().isEmpty()) {
 			toDocument.getFeatures().putAll(fromDocument.getFeatures());
 		}
+		if (toDocument instanceof DocumentImpl) {
+			DocumentImpl toDocumentImpl = (DocumentImpl) toDocument;
+
+			int nextAnnotationId;
+			if (fromDocument instanceof DocumentImpl) {
+				nextAnnotationId = ((DocumentImpl) fromDocument).peakAtNextAnnotationId();
+			} else {
+				nextAnnotationId = allAnnotationStream(fromDocument).mapToInt(annotation -> annotation.getId()).max()
+						.orElse(-1) + 1;
+			}
+			toDocumentImpl.setNextAnnotationId(nextAnnotationId);
+
+			int nextNodeId = allAnnotationStream(fromDocument)
+					.flatMap(annotation -> Stream.of(annotation.getStartNode(), annotation.getEndNode()))
+					.mapToInt(node -> node.getId()).max().orElse(-1) + 1;
+			if (nextNodeId > 0) {
+				int currentNextNodeId;
+				do {
+					currentNextNodeId = toDocumentImpl.getNextNodeId() + 1;
+				} while (nextNodeId > currentNextNodeId);
+			}
+		}
+	}
+
+	private static Stream<Annotation> allAnnotationStream(Document document) {
+		return Stream.concat(document.getAnnotations().stream(),
+				document.getAnnotationSetNames().stream().flatMap(name -> document.getAnnotations(name).stream()));
 	}
 
 }
