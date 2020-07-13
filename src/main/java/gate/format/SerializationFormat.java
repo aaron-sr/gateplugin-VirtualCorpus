@@ -3,7 +3,6 @@ package gate.format;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ObjectInputStream;
 import java.io.UnsupportedEncodingException;
 
 import org.apache.log4j.Logger;
@@ -18,7 +17,6 @@ import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.AutoInstance;
 import gate.creole.metadata.CreoleResource;
 import gate.serialization.DocumentUtil;
-import gate.serialization.GateObjectInputStream;
 import gate.util.DocumentFormatException;
 
 @CreoleResource(name = "Serialization Format", isPrivate = true, autoinstances = { @AutoInstance(hidden = true) })
@@ -45,21 +43,9 @@ public class SerializationFormat extends TextualDocumentFormat {
 
 	@Override
 	public void unpackMarkup(Document document) throws DocumentFormatException {
-		try {
-			InputStream bytes = openContentInputStream(document);
-			if (bytes.available() > 0) {
-				Document readDocument;
-				try (ObjectInputStream objectInputStream = new GateObjectInputStream(bytes)) {
-					readDocument = (Document) objectInputStream.readObject();
-				}
-				bytes.close();
-
-				DocumentUtil.validateEmptyDocument(document);
-				DocumentUtil.copyDocumentValues(readDocument, document);
-			} else {
-				bytes.close();
-			}
-		} catch (Exception e) {
+		try (InputStream inputStream = openContentInputStream(document)) {
+			DocumentUtil.applyDocumentValues(inputStream, false, document);
+		} catch (IOException e) {
 			throw new DocumentFormatException(e);
 		}
 	}

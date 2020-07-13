@@ -5,17 +5,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.zip.DeflaterOutputStream;
-import java.util.zip.InflaterInputStream;
 
 import org.apache.log4j.Logger;
 import org.mapdb.DB;
@@ -24,15 +19,12 @@ import org.mapdb.DBMaker.Maker;
 import org.mapdb.Serializer;
 
 import gate.Document;
-import gate.Factory;
 import gate.Resource;
-import gate.creole.AbstractResource;
 import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
 import gate.serialization.DocumentUtil;
-import gate.serialization.GateObjectInputStream;
 
 @CreoleResource(name = "MapDbCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by serialized GATE documents in a MapDB")
 public class MapDbCorpus extends VirtualCorpus {
@@ -142,16 +134,9 @@ public class MapDbCorpus extends VirtualCorpus {
 	@Override
 	protected Document loadDocument(int index) throws Exception {
 		if (documentBytes.containsKey(index)) {
-			Document readDocument = readDocument(index);
-
-			String documentName = getDocumentName(index);
-			Document document = (Document) Factory.createResource(readDocument.getClass().getCanonicalName(),
-					AbstractResource.getInitParameterValues(readDocument), readDocument.getFeatures(), documentName);
-
-			DocumentUtil.validateEmptyDocument(document);
-			DocumentUtil.copyDocumentValues(readDocument, document);
-
-			return document;
+			try (InputStream in = new ByteArrayInputStream(documentBytes.get(index))) {
+				return DocumentUtil.readDocument(in, compressDocuments);
+			}
 		}
 		return null;
 	}
@@ -200,28 +185,11 @@ public class MapDbCorpus extends VirtualCorpus {
 		documentNames.put(indexOf(document), newName);
 	}
 
-	private Document readDocument(int index) throws Exception {
-		InputStream is = new ByteArrayInputStream(documentBytes.get(index));
-		if (compressDocuments) {
-			is = new InflaterInputStream(is);
-		}
-		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
-			Document document = (Document) ois.readObject();
-			return document;
-		}
-	}
-
 	private byte[] buildBytes(Document document) throws IOException {
-		ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		OutputStream os = baos;
-		if (compressDocuments) {
-			os = new DeflaterOutputStream(os, true);
+		try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+			DocumentUtil.writeDocument(document, baos, compressDocuments);
+			return baos.toByteArray();
 		}
-		try (ObjectOutputStream oos = new ObjectOutputStream(os)) {
-			oos.writeObject(document);
-			oos.flush();
-		}
-		return baos.toByteArray();
 	}
 
 }

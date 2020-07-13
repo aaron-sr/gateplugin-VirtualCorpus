@@ -1,10 +1,6 @@
 package gate.virtualcorpus;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,8 +11,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.zip.DeflaterOutputStream;
-import java.util.zip.InflaterInputStream;
 
 import org.apache.log4j.Logger;
 
@@ -26,13 +20,11 @@ import gate.FeatureMap;
 import gate.GateConstants;
 import gate.Resource;
 import gate.corpora.DocumentImpl;
-import gate.creole.AbstractResource;
 import gate.creole.ResourceInstantiationException;
 import gate.creole.metadata.CreoleParameter;
 import gate.creole.metadata.CreoleResource;
 import gate.creole.metadata.Optional;
 import gate.serialization.DocumentUtil;
-import gate.serialization.GateObjectInputStream;
 
 @CreoleResource(name = "SerializedFilesCorpus", interfaceName = "gate.Corpus", icon = "corpus", comment = "A corpus backed by GATE documents serialized in files in a single directory")
 public class SerializedFilesCorpus extends VirtualCorpus {
@@ -189,7 +181,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 			if (!Files.exists(path)) {
 				return null;
 			}
-			return readDocumentName(path);
+			return DocumentUtil.readDocumentName(Files.newInputStream(path), compressFiles);
 		}
 	}
 
@@ -198,10 +190,10 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 		if (regularFiles) {
 			Path path = paths.get(index);
 			Path writePath = writePath(path);
-			String documentName = getDocumentName(index);
 			if (Files.exists(writePath)) {
-				return loadDocument(writePath, documentName);
+				return loadDocument(writePath);
 			}
+			String documentName = getDocumentName(index);
 			String content = new String(Files.readAllBytes(path));
 			FeatureMap features = Factory.newFeatureMap();
 			features.put(GateConstants.THROWEX_FORMAT_PROPERTY_NAME, true);
@@ -245,7 +237,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 		} else {
 			path = indexedPath(index);
 		}
-		writeDocument(path, document);
+		DocumentUtil.writeDocument(document, Files.newOutputStream(path), compressFiles);
 	}
 
 	@Override
@@ -287,60 +279,7 @@ public class SerializedFilesCorpus extends VirtualCorpus {
 	}
 
 	private Document loadDocument(Path path) throws Exception {
-		return loadDocument(path, null);
-	}
-
-	private Document loadDocument(Path path, String documentName) throws Exception {
-		Document readDocument = readDocument(path);
-		if (documentName == null) {
-			documentName = readDocument.getName();
-		}
-
-		Document document = (Document) Factory.createResource(readDocument.getClass().getCanonicalName(),
-				AbstractResource.getInitParameterValues(readDocument), readDocument.getFeatures(), documentName);
-
-		DocumentUtil.validateEmptyDocument(document);
-		DocumentUtil.copyDocumentValues(readDocument, document);
-
-		return document;
-	}
-
-	private Document readDocument(Path path) throws Exception {
-		InputStream is = Files.newInputStream(path);
-		if (compressFiles) {
-			is = new InflaterInputStream(is);
-		}
-		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
-			String documentName = (String) ois.readObject();
-			Document document = (Document) ois.readObject();
-			if (!documentName.contentEquals(document.getName())) {
-				throw new IllegalStateException("document names does not match");
-			}
-			return document;
-		}
-	}
-
-	private String readDocumentName(Path path) throws Exception {
-		InputStream is = Files.newInputStream(path);
-		if (compressFiles) {
-			is = new InflaterInputStream(is);
-		}
-		try (ObjectInputStream ois = new GateObjectInputStream(is)) {
-			String documentName = (String) ois.readObject();
-			return documentName;
-		}
-	}
-
-	private void writeDocument(Path path, Document document) throws IOException {
-		OutputStream os = Files.newOutputStream(path);
-		if (compressFiles) {
-			os = new DeflaterOutputStream(os, true);
-		}
-		try (ObjectOutputStream oos = new ObjectOutputStream(os)) {
-			oos.writeObject(document.getName());
-			oos.writeObject(document);
-			oos.flush();
-		}
+		return DocumentUtil.readDocument(Files.newInputStream(path), compressFiles);
 	}
 
 	private Path indexedPath(int index) {

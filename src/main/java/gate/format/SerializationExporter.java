@@ -1,7 +1,6 @@
 package gate.format;
 
 import java.io.IOException;
-import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 
 import org.apache.log4j.Logger;
@@ -11,6 +10,7 @@ import gate.DocumentExporter;
 import gate.FeatureMap;
 import gate.creole.metadata.AutoInstance;
 import gate.creole.metadata.CreoleResource;
+import gate.serialization.DocumentUtil;
 
 @CreoleResource(name = "Serialization Exporter", tool = true, autoinstances = @AutoInstance)
 public class SerializationExporter extends DocumentExporter {
@@ -27,8 +27,7 @@ public class SerializationExporter extends DocumentExporter {
 
 	@Override
 	public void export(Document document, OutputStream outputStream, FeatureMap options) throws IOException {
-		new ObjectOutputStream(outputStream).writeObject(document);
-		outputStream.flush();
+		DocumentUtil.writeDocument(document, outputStream, false);
 	}
 
 }
