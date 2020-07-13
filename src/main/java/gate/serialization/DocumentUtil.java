@@ -71,7 +71,7 @@ public class DocumentUtil {
 
 	public static void applyDocumentValues(Document fromDocument, Document toDocument) throws DocumentFormatException {
 		DocumentUtil.validateEmptyDocument(toDocument);
-		DocumentUtil.copyDocumentValues(fromDocument, fromDocument);
+		DocumentUtil.copyDocumentValues(fromDocument, toDocument);
 	}
 
 	public static Document readRawDocument(InputStream in, boolean compressed) throws IOException {
